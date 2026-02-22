@@ -1,686 +1,484 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, Area, AreaChart, BarChart, Bar, Cell, ComposedChart, ReferenceDot } from "recharts";
+import { useState, useMemo } from "react";
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Area, BarChart, Bar, Cell, ComposedChart } from "recharts";
 
-/*
- ╔══════════════════════════════════════════════════════════════════╗
- ║  GPIC COMPLEX PROFITABILITY — LP OPTIMIZER DASHBOARD            ║
- ║  Based on Simplex LP + Integer Constraints (Model v31)          ║
- ║                                                                  ║
- ║  KEY MODEL INSIGHT: Methanol shutdown affects ammonia & urea    ║
- ║  via CO2/CDR constraints. Shutdown price ≠ variable cost.       ║
- ╚══════════════════════════════════════════════════════════════════╝
-*/
-
-// ─── BASE MODEL CONSTANTS (from Excel at $5/MMBTU gas) ────────────────────
-const BASE = {
-  K7: 0.57,              // NH3→Urea specific consumption (MT/MT)
-  alpha: 0.1092174534,   // K10 coefficient for Case A
-  C33_coeff: 1.660263,   // CO2 capacity coefficient
-  SGC_amm: 1015.6794,    // Specific gas consumption ammonia (Nm3/MT)
-  SGC_meth: 1153.1574,   // Specific gas consumption methanol (Nm3/MT)
-  GT_gas: 5053000,       // GT gas constant (Nm3/month)
-  flare_gas: 424700,     // Flare gas constant (Nm3/month)
-  H33: 291.9498,         // Boiler coeff for K10 (ammonia)
-  H34: 682.0557,         // Boiler coeff for D5 (methanol)
-  H35: 101.2184,         // Boiler coeff for K9 (urea)
-  
-  // Base variable costs at $5/MMBTU
-  VC_amm_base: 198.60366,   // $/MT (Case A / high methanol)
-  VC_meth_base: 205.34865,  // $/MT
-  VC_urea_base: 146.31378,  // $/MT (Case A)
-  
-  // Gas cost components in VC (for scaling)
-  gasVC_amm: 144.153,    // gas component of ammonia VC
-  gasVC_meth: 183.963,   // gas component of methanol VC
-  gasVC_urea: 80.5,      // approx gas component of urea VC
-  
-  // CDR shutdown penalty: when MeOH is below threshold,
-  // ammonia loses 5580 MT/mo capacity and costs +$15/MT more
-  ammPenalty_B: 15,      // $/MT extra ammonia VC in Case B
-  ammCapLoss_B: 5580,    // MT/mo ammonia capacity loss
-  ammCapLoss_A: 4247,    // MT/mo ammonia capacity loss Case A
-
-  // Fixed costs
-  FC_amm: 2247735.68,
-  FC_meth: 2327405.71,
-  FC_urea: 3703933.72,
-  FC_total: 8279075.12,
+// ═══ EXACT MODEL CONSTANTS (from LP Solver formulas) ═══
+const M = {
+  K7: 0.57, alpha: 0.1092174534, C33c: 1.660263,
+  capA: 4247, capB: 5580, vcPen: 15,
+  sgcAA: 903.61, sgcAB: 1015.6794, sgcM: 1153.1574,
+  bM: 110.0465, bA: 237.3583, bU: 104.1689,
+  GT: 5053000, FL: 424700, GC: 37.325,
+  vaG: 184.293, vaF: 14.311,
+  vmG: 198.047, vmF: 7.302,
+  vuG: 124.720, vuF: 21.594,
+  fcA: 2247735.682, fcM: 2327405.710, fcU: 3703933.724,
 };
+M.FC = M.fcA + M.fcM + M.fcU;
+const O12 = 35542.641876, D42v = 369.7307280012251, C8v = 682.0557491289198;
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+function getR13(d) { return (O12 * 24 / M.sgcM) * d; }
+function getD33t(mu, d) { return mu * d * D42v / (C8v * 0.9); }
 
-// ─── VARIABLE COST CALCULATOR (scales with gas price) ──────────────────────
-function calcVC(gasPrice) {
-  const ratio = gasPrice / 5.0;
+function getVC(gp) {
+  const r = gp / 5;
   return {
-    amm_A: BASE.VC_amm_base + BASE.gasVC_amm * (ratio - 1),
-    amm_B: BASE.VC_amm_base + BASE.gasVC_amm * (ratio - 1) + BASE.ammPenalty_B,
-    meth:  BASE.VC_meth_base + BASE.gasVC_meth * (ratio - 1),
-    urea_A: BASE.VC_urea_base + BASE.gasVC_urea * (ratio - 1),
-    urea_B: BASE.VC_urea_base + BASE.gasVC_urea * (ratio - 1) + BASE.K7 * BASE.ammPenalty_B,
+    aA: M.vaF + M.vaG * r, aB: M.vaF + M.vaG * r + M.vcPen,
+    m: M.vmF + M.vmG * r,
+    uA: M.vuF + M.vuG * r, uB: M.vuF + M.vuG * r + M.K7 * M.vcPen,
   };
 }
 
-// ─── GAS CONSUMPTION CHECK ─────────────────────────────────────────────────
-function calcGas(K10, D5, K9, days) {
-  const C12 = BASE.SGC_amm * K10;
-  const D12 = BASE.SGC_meth * D5;
-  const C15 = BASE.H34 * D5 + BASE.H33 * K10 + BASE.H35 * K9;
-  const total = C12 + D12 + BASE.GT_gas + C15 + BASE.flare_gas;
-  return total * 37.325 / (1e6 * days);
+function gas(K10A, K10B, D5A, D5B, K9A, K9B, D5t, days) {
+  const d94 = M.sgcAA * K10A, d95 = M.sgcAB * K10B, d96 = M.sgcM * D5t;
+  const d98 = M.bM * D5A + M.bA * K10A + M.bU * K9A;
+  const d99 = M.bM * D5B + M.bA * K10B + M.bU * K9B;
+  const tot = d94 + d95 + d96 + M.GT + d98 + d99 + M.FL;
+  return { tot, mm: tot * M.GC / (1e6 * days), st: (d98 + d99) / 105 / days / 24 };
 }
 
-// ─── LP SOLVER (mirrors Excel Cases A & B) ─────────────────────────────────
-function solveLP(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days) {
-  const vc = calcVC(gasP);
-  const K1 = days;
-  const R4 = K1 * maxAmm;
-  const S4 = K1 * maxMeth;
-  const T4 = K1 * maxUrea;
-  const R13 = maxMeth * 0.6 * K1; // methanol threshold (~60% load)
+function solve(aP, mP, uP, gP, mxA, mxM, mxU, mxG, days) {
+  const v = getVC(gP), K1 = days, R13 = getR13(K1), D33t = getD33t(mxU, K1);
+  const mD5 = mxM * K1, mE5 = mxU * K1, mK4 = mxA * K1;
+  let best = null;
 
-  let best = { profit: -Infinity };
-
-  // ── CASE A: D5 ≥ R13 (methanol above threshold) ──
-  // Methanol at various levels from R13 to S4
-  for (let frac = 0.6; frac <= 1.0; frac += 0.005) {
-    const D5 = Math.min(frac * S4, S4);
-    if (D5 < R13) continue;
-
-    const K4 = R4;
-    const K10 = K4 - BASE.ammCapLoss_A + BASE.alpha * D5;
-    const E5 = T4;
-    const K9 = E5; // In Case A, full urea
-    const K8 = BASE.K7 * K9;
-    const K11 = K10 - K8;
-
-    if (K11 < 0) continue;
-    const gas = calcGas(K10, D5, K9, K1);
-    if (gas > maxGas) continue;
-
-    const profit = (ammP - vc.amm_A) * K11 + (methP - vc.meth) * D5 + (ureaP - vc.urea_A) * K9 - BASE.FC_total;
-    if (profit > best.profit) {
-      best = { caseType:'A', D5, K10, K9, K8, K11, K4, gas, profit, dailyAmm:K10/K1, dailyMeth:D5/K1, dailyUrea:K9/K1, vcAmm:vc.amm_A, vcMeth:vc.meth, vcUrea:vc.urea_A };
+  function tryIt(ct, y1, D5A, D5B, K4A, K4B, K10A, K10B, K9A, K9B) {
+    const K10 = K10A + K10B, K9 = K9A + K9B, K8 = M.K7 * K9, K11 = K10 - K8;
+    if (K11 < 0) return;
+    const D5 = D5A + D5B;
+    const g = gas(K10A, K10B, D5A, D5B, K9A, K9B, D5, K1);
+    if (g.mm > mxG + 0.001) return;
+    const pA = (aP - v.aA) * (K10A - M.K7 * K9A) + (mP - v.m) * D5A + (uP - v.uA) * K9A;
+    const pB = (aP - v.aB) * (K10B - M.K7 * K9B) + (mP - v.m) * D5B + (uP - v.uB) * K9B;
+    const profit = pA + pB - M.FC;
+    if (!best || profit > best.profit) {
+      best = { ct, y1, D5A, D5B, K10A, K10B, K9A, K9B, K10, K9, K8, K11, D5, K4: K4A + K4B, gas: g.mm, gTot: g.tot, st: g.st, profit, dA: K10 / K1, dM: D5 / K1, dU: K9 / K1, va: y1 ? v.aA : v.aB, vm: v.m, vu: y1 ? v.uA : v.uB };
     }
   }
 
-  // ── CASE B: D5 < R13 (methanol below threshold) ──
-  for (let frac = 0; frac <= 0.6; frac += 0.005) {
-    const D5 = Math.max(1, frac * S4);
-    if (D5 >= R13) continue;
-
-    const K4 = R4;
-    const K10 = K4 - BASE.ammCapLoss_B; // 5580 penalty
-    const C33 = BASE.C33_coeff * K10;   // CO2 limited urea
-    const K9 = Math.min(T4, C33);       // urea limited by CO2 when MeOH down
-    const K8 = BASE.K7 * K9;
-    const K11 = K10 - K8;
-
-    if (K11 < 0) continue;
-    const gas = calcGas(K10, D5, K9, K1);
-    if (gas > maxGas) continue;
-
-    const profit = (ammP - vc.amm_B) * K11 + (methP - vc.meth) * D5 + (ureaP - vc.urea_B) * K9 - BASE.FC_total;
-    if (profit > best.profit) {
-      best = { caseType:'B', D5, K10, K9, K8, K11, K4, gas, profit, dailyAmm:K10/K1, dailyMeth:D5/K1, dailyUrea:K9/K1, vcAmm:vc.amm_B, vcMeth:vc.meth, vcUrea:vc.urea_B };
+  // Case A: y1=1, D5>=R13
+  { const K4A = mK4, E5A = mE5, K9A = E5A;
+    for (let i = 0; i <= 300; i++) {
+      const D5A = R13 + (mD5 - R13) * i / 300;
+      tryIt('A', 1, D5A, 0, K4A, 0, K4A - M.capA + M.alpha * D5A, 0, K9A, 0);
     }
   }
 
-  // Also try D5=1 (effectively shutdown)
-  {
-    const D5 = 1;
-    const K4 = R4;
-    const K10 = K4 - BASE.ammCapLoss_B;
-    const C33 = BASE.C33_coeff * K10;
-    const K9 = Math.min(T4, C33);
-    const K8 = BASE.K7 * K9;
-    const K11 = K10 - K8;
-    if (K11 >= 0) {
-      const gas = calcGas(K10, D5, K9, K1);
-      if (gas <= maxGas) {
-        const profit = (ammP - vc.amm_B) * K11 + (methP - vc.meth) * D5 + (ureaP - vc.urea_B) * K9 - BASE.FC_total;
-        if (profit > best.profit) {
-          best = { caseType:'B-min', D5, K10, K9, K8, K11, K4, gas, profit, dailyAmm:K10/K1, dailyMeth:D5/K1, dailyUrea:K9/K1, vcAmm:vc.amm_B, vcMeth:vc.meth, vcUrea:vc.urea_B };
-        }
+  // Case B: y1=0, D5<R13
+  { const K4B = mK4, E5B = mE5, K10B = K4B - M.capB;
+    if (K10B >= 1) {
+      const C33B = M.C33c * K10B;
+      const K9B = K10B <= D33t ? E5B : Math.min(E5B, C33B);
+      const mxDB = Math.min(Math.floor(R13 - 1), mD5);
+      for (let i = 0; i <= 300; i++) {
+        const D5B = Math.max(1, 1 + (mxDB - 1) * i / 300);
+        tryIt(K10B <= D33t ? 'B1' : 'B2', 0, 0, D5B, 0, K4B, 0, K10B, 0, K9B);
       }
     }
   }
 
-  if (best.profit === -Infinity) {
-    return { caseType:'Infeasible', D5:0, K10:0, K9:0, K8:0, K11:0, K4:0, gas:0, profit:0, dailyAmm:0, dailyMeth:0, dailyUrea:0, vcAmm:vc.amm_A, vcMeth:vc.meth, vcUrea:vc.urea_A };
-  }
+  if (!best) return { ct: 'X', profit: 0, D5: 0, K10: 0, K9: 0, K8: 0, K11: 0, K4: 0, gas: 0, dA: 0, dM: 0, dU: 0, va: v.aA, vm: v.m, vu: v.uA, st: 0, gTot: 0, y1: 0 };
   return best;
 }
 
-// ─── SHUTDOWN ANALYSIS ─────────────────────────────────────────────────────
-// Computes: (1) profit with MeOH plant running at each price (optimizer finds best level)
-//           (2) profit with MeOH plant fully shut down (D5=0, with CDR/ammonia penalties)
-function generateShutdownData(ammP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days) {
-  const vc = calcVC(gasP);
-  const K1 = days;
-  const R4 = K1 * maxAmm;
-  const T4 = K1 * maxUrea;
-
-  // ── SHUTDOWN PROFIT (constant, independent of methanol price) ──
-  // When methanol is fully shut down: D5=0, ammonia loses 5580 capacity,
-  // urea limited by CO2, and VC penalties apply
-  const K10_shut = R4 - BASE.ammCapLoss_B;
-  const C33_shut = BASE.C33_coeff * K10_shut;
-  const K9_shut = Math.min(T4, C33_shut);
-  const K8_shut = BASE.K7 * K9_shut;
-  const K11_shut = K10_shut - K8_shut;
-  const shutdownProfit = (ammP - vc.amm_B) * K11_shut + (ureaP - vc.urea_B) * K9_shut - BASE.FC_total;
-
-  const data = [];
-  let crossover = null;
-  let prevDiff = null;
-
+function shutdownAnalysis(aP, uP, gP, mxA, mxM, mxU, mxG, days) {
+  const v = getVC(gP), K1 = days, mK4 = mxA * K1, mE5 = mxU * K1, D33t = getD33t(mxU, K1);
+  const K10s = mK4 - M.capB, C33s = M.C33c * K10s;
+  const K9s = K10s <= D33t ? mE5 : Math.min(mE5, C33s);
+  const K11s = K10s - M.K7 * K9s;
+  const sp = (aP - v.aB) * K11s + (uP - v.uB) * K9s - M.FC;
+  const data = []; let cross = null, pd = null;
   for (let mp = 0; mp <= 350; mp += 5) {
-    // Running profit: optimizer picks best production at this MeOH price
-    const result = solveLP(ammP, mp, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days);
-    const runProfit = result.profit;
-
-    const diff = runProfit - shutdownProfit;
-
-    // Detect crossover
-    if (prevDiff !== null && prevDiff <= 0 && diff > 0 && crossover === null) {
-      // Interpolate
-      const prevMp = mp - 5;
-      crossover = prevMp + 5 * (-prevDiff) / (diff - prevDiff);
-    }
-    prevDiff = diff;
-
-    data.push({
-      methPrice: mp,
-      runningProfit: runProfit / 1e6,
-      shutdownProfit: shutdownProfit / 1e6,
-    });
+    const r = solve(aP, mp, uP, gP, mxA, mxM, mxU, mxG, days);
+    const d = r.profit - sp;
+    if (pd !== null && pd <= 500 && d > 500 && cross === null) cross = mp - 5 + 5 * (500 - pd) / (d - pd);
+    pd = d;
+    data.push({ mp, run: r.profit / 1e6, shut: sp / 1e6 });
   }
-
-  // If no crossover found but running always above shutdown, crossover is below 0
-  return { data, crossover, vcMeth: vc.meth, shutdownProfitVal: shutdownProfit };
+  return { data, cross, vcM: v.m, sp };
 }
 
-// ─── FORMAT HELPERS ────────────────────────────────────────────────────────
-const fmt = (n, d=0) => n==null?'—':Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
-const fmtM = (n) => n==null?'—':`$${(n/1e6).toFixed(2)}M`;
+// ═══ HELPERS ═══
+const MO = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const MD = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const ff = (n, d = 0) => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fM = n => n == null ? '—' : `$${(n / 1e6).toFixed(2)}M`;
+const mn = { fontFamily: "'JetBrains Mono',monospace" };
+const tb = { background: 'rgba(10,15,30,0.96)', border: '1px solid rgba(100,120,150,0.25)', borderRadius: 10, padding: '12px 16px', fontFamily: "'DM Sans',sans-serif", fontSize: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.5)', minWidth: 200 };
+const lb = { fontSize: 10, color: '#475569', textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: 700 };
 
-// ─── SHUTDOWN CHART TOOLTIP ────────────────────────────────────────────────
-const ShutdownTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  const running = payload.find(p => p.dataKey === 'runningProfit');
-  const shutdown = payload.find(p => p.dataKey === 'shutdownProfit');
-  const diff = running && shutdown ? (running.value - shutdown.value) : 0;
+// ═══ SUB COMPONENTS ═══
+function NI({ l, v, s, u, c, step = 1 }) {
   return (
-    <div style={{ background:'rgba(10,15,30,0.96)', border:'1px solid rgba(100,120,150,0.25)', borderRadius:10, padding:'14px 18px', fontFamily:"'DM Sans',sans-serif", fontSize:13, boxShadow:'0 12px 40px rgba(0,0,0,0.5)', minWidth:220 }}>
-      <div style={{ color:'#94a3b8', marginBottom:10, fontWeight:600, borderBottom:'1px solid rgba(100,120,150,0.15)', paddingBottom:8 }}>
-        Methanol Price: ${label}/MT
-      </div>
-      {running && (
-        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-          <span style={{ color:'#22c55e' }}>● MeOH Running</span>
-          <span style={{ color:'#22c55e', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>${running.value.toFixed(2)}M</span>
-        </div>
-      )}
-      {shutdown && (
-        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-          <span style={{ color:'#f97316' }}>● MeOH Shutdown</span>
-          <span style={{ color:'#f97316', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>${shutdown.value.toFixed(2)}M</span>
-        </div>
-      )}
-      <div style={{ borderTop:'1px solid rgba(100,120,150,0.15)', paddingTop:8, display:'flex', justifyContent:'space-between' }}>
-        <span style={{ color:'#cbd5e1', fontWeight:600 }}>Advantage</span>
-        <span style={{ color: diff > 0 ? '#22c55e' : diff < -0.01 ? '#ef4444' : '#fbbf24', fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>
-          {diff > 0 ? '+' : ''}{diff.toFixed(3)}M
-        </span>
-      </div>
-    </div>
-  );
-};
-
-// ─── GENERIC TOOLTIP ───────────────────────────────────────────────────────
-const GenericTooltip = ({ active, payload, label, xLabel, yLabel }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background:'rgba(10,15,30,0.96)', border:'1px solid rgba(100,120,150,0.25)', borderRadius:10, padding:'12px 16px', fontFamily:"'DM Sans',sans-serif", fontSize:13, boxShadow:'0 12px 40px rgba(0,0,0,0.5)' }}>
-      <div style={{ color:'#94a3b8', marginBottom:6, fontWeight:600 }}>{xLabel || ''}: {label}</div>
-      {payload.map((p,i) => (
-        <div key={i} style={{ display:'flex', justifyContent:'space-between', gap:16, marginBottom:3 }}>
-          <span style={{ color:p.color }}>{p.name}</span>
-          <span style={{ color:p.color, fontWeight:700, fontFamily:"'JetBrains Mono',monospace" }}>{typeof p.value==='number'?p.value.toFixed(2):p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN DASHBOARD COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════
-export default function Dashboard() {
-  const [ammP, setAmmP] = useState(325);
-  const [methP, setMethP] = useState(80);
-  const [ureaP, setUreaP] = useState(400);
-  const [gasP, setGasP] = useState(5);
-  const [maxAmm, setMaxAmm] = useState(1320);
-  const [maxMeth, setMaxMeth] = useState(1250);
-  const [maxUrea, setMaxUrea] = useState(2150);
-  const [maxGas, setMaxGas] = useState(128);
-  const [monthIdx, setMonthIdx] = useState(4);
-  const [tab, setTab] = useState('optimizer');
-
-  const days = MONTH_DAYS[monthIdx];
-
-  // Core results
-  const result = useMemo(() => solveLP(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days), [ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days]);
-
-  // Shutdown analysis
-  const shutdown = useMemo(() => generateShutdownData(ammP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days), [ammP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days]);
-
-  // Gas sensitivity
-  const gasSens = useMemo(() => {
-    const d = [];
-    for (let g = 0.5; g <= 10; g += 0.25) {
-      const r = solveLP(ammP, methP, ureaP, g, maxAmm, maxMeth, maxUrea, maxGas, days);
-      d.push({ gasPrice: g, profit: r.profit / 1e6 });
-    }
-    return d;
-  }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days]);
-
-  const profitColor = result.profit >= 0 ? '#22c55e' : '#ef4444';
-  const crossPrice = shutdown.crossover;
-
-  // Revenue / cost breakdown
-  const revAmm = result.K11 * ammP;
-  const revMeth = result.D5 * methP;
-  const revUrea = result.K9 * ureaP;
-  const totalRev = revAmm + revMeth + revUrea;
-  const vcTotal = result.K11 * result.vcAmm + result.D5 * result.vcMeth + result.K9 * result.vcUrea;
-
-  return (
-    <div style={{ minHeight:'100vh', background:'#080c14', color:'#e2e8f0', fontFamily:"'DM Sans',sans-serif" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-      
-      {/* ═══ HEADER ═══ */}
-      <header style={{ background:'linear-gradient(90deg, rgba(34,197,94,0.06) 0%, rgba(59,130,246,0.06) 50%, rgba(249,115,22,0.06) 100%)', borderBottom:'1px solid rgba(100,120,150,0.1)', padding:'18px 28px', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-          <div style={{ width:40, height:40, borderRadius:10, background:'linear-gradient(135deg,#22c55e,#3b82f6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:800, color:'#080c14' }}>LP</div>
-          <div>
-            <div style={{ fontSize:10, letterSpacing:4, color:'#475569', textTransform:'uppercase', fontWeight:600 }}>GPIC Complex Profitability</div>
-            <h1 style={{ fontSize:22, fontWeight:700, margin:0, color:'#f1f5f9' }}>LP Optimizer Dashboard</h1>
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:6, background:'rgba(15,23,42,0.6)', borderRadius:10, padding:4, border:'1px solid rgba(100,120,150,0.1)' }}>
-          {[
-            {id:'optimizer', icon:'⚡', label:'Optimizer'},
-            {id:'shutdown', icon:'🏭', label:'MeOH Shutdown'},
-            {id:'sensitivity', icon:'📊', label:'Gas Sensitivity'},
-          ].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              padding:'8px 16px', borderRadius:8, border:'none',
-              background: tab===t.id ? 'rgba(59,130,246,0.2)' : 'transparent',
-              color: tab===t.id ? '#60a5fa' : '#64748b',
-              fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
-              transition:'all 0.2s',
-            }}>
-              {t.icon} {t.label}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <div style={{ padding:'20px 28px', maxWidth:1440, margin:'0 auto' }}>
-
-        {/* ═══ INPUTS PANEL ═══ */}
-        <div style={{ background:'rgba(15,23,42,0.5)', borderRadius:14, border:'1px solid rgba(100,120,150,0.08)', padding:'20px 24px', marginBottom:20 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18 }}>
-            <div style={{ width:4, height:20, background:'linear-gradient(180deg,#3b82f6,#22c55e)', borderRadius:2 }}/>
-            <span style={{ fontSize:13, fontWeight:600, color:'#94a3b8', letterSpacing:0.5 }}>Market Inputs & Plant Parameters</span>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))', gap:12 }}>
-            <NumInput label="Ammonia Price" v={ammP} set={setAmmP} unit="$/MT" accent="#f59e0b"/>
-            <NumInput label="Methanol Price" v={methP} set={setMethP} unit="$/MT" accent="#a855f7"/>
-            <NumInput label="Urea Price" v={ureaP} set={setUreaP} unit="$/MT" accent="#22c55e"/>
-            <NumInput label="Natural Gas" v={gasP} set={setGasP} unit="$/MMBTU" accent="#ef4444" step={0.25}/>
-            <NumInput label="Max Ammonia" v={maxAmm} set={setMaxAmm} unit="MT/D" accent="#f59e0b"/>
-            <NumInput label="Max Methanol" v={maxMeth} set={setMaxMeth} unit="MT/D" accent="#a855f7"/>
-            <NumInput label="Max Urea" v={maxUrea} set={setMaxUrea} unit="MT/D" accent="#22c55e"/>
-            <NumInput label="Max Gas" v={maxGas} set={setMaxGas} unit="MMSCFD" accent="#ef4444"/>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              <label style={{ fontSize:10, color:'#475569', textTransform:'uppercase', letterSpacing:1.5, fontWeight:700 }}>Month ({days}d)</label>
-              <select value={monthIdx} onChange={e=>setMonthIdx(+e.target.value)} style={{ background:'rgba(8,12,20,0.8)', border:'1px solid rgba(100,120,150,0.15)', borderRadius:8, color:'#e2e8f0', padding:'9px 10px', fontSize:14, fontFamily:'inherit', outline:'none' }}>
-                {MONTHS.map((m,i)=><option key={i} value={i}>{m}</option>)}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* ═══ OPTIMIZER TAB ═══ */}
-        {tab==='optimizer' && <>
-          {/* KPIs */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(220px, 1fr))', gap:14, marginBottom:20 }}>
-            <KPI title="Net Monthly Profit" value={fmtM(result.profit)} sub={`Case ${result.caseType} • ${MONTHS[monthIdx]}`} color={profitColor} big/>
-            <KPI title="Ammonia" value={`${fmt(result.dailyAmm,1)} MT/D`} sub={`${fmt(result.K11,0)} MT saleable`} color="#f59e0b"/>
-            <KPI title="Methanol" value={`${fmt(result.dailyMeth,1)} MT/D`} sub={`${fmt(result.D5,0)} MT total`} color="#a855f7"/>
-            <KPI title="Urea" value={`${fmt(result.dailyUrea,1)} MT/D`} sub={`${fmt(result.K9,0)} MT saleable`} color="#22c55e"/>
-            <KPI title="Gas Consumption" value={`${fmt(result.gas,2)} MMSCFD`} sub={`${((result.gas/maxGas)*100).toFixed(1)}% of ${maxGas} limit`} color="#ef4444"/>
-          </div>
-
-          {/* Charts row */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
-            {/* Production utilization */}
-            <Card title="Daily Production vs Capacity">
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={[
-                  {name:'Ammonia', prod:result.dailyAmm, cap:maxAmm},
-                  {name:'Methanol', prod:result.dailyMeth, cap:maxMeth},
-                  {name:'Urea', prod:result.dailyUrea, cap:maxUrea},
-                ]} layout="vertical" margin={{left:10,right:25,top:5,bottom:5}}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,120,150,0.08)"/>
-                  <XAxis type="number" tick={{fill:'#475569',fontSize:11}} tickFormatter={v=>`${v}`}/>
-                  <YAxis dataKey="name" type="category" tick={{fill:'#94a3b8',fontSize:13,fontWeight:500}} width={75}/>
-                  <Tooltip content={({active,payload})=>active&&payload?.[0]?(
-                    <div style={{background:'rgba(10,15,30,0.96)',border:'1px solid rgba(100,120,150,0.25)',borderRadius:8,padding:'10px 14px',fontSize:12}}>
-                      <div style={{color:'#e2e8f0',fontWeight:600,marginBottom:4}}>{payload[0].payload.name}</div>
-                      <div style={{color:'#60a5fa'}}>Production: {fmt(payload[0].payload.prod,1)} MT/D</div>
-                      <div style={{color:'#475569'}}>Capacity: {fmt(payload[0].payload.cap)} MT/D</div>
-                      <div style={{color:'#fbbf24'}}>Utilization: {((payload[0].payload.prod/payload[0].payload.cap)*100).toFixed(1)}%</div>
-                    </div>
-                  ):null}/>
-                  <Bar dataKey="cap" radius={[0,4,4,0]} barSize={24} fill="rgba(100,120,150,0.12)"/>
-                  <Bar dataKey="prod" radius={[0,6,6,0]} barSize={24}>
-                    <Cell fill="#f59e0b"/>
-                    <Cell fill="#a855f7"/>
-                    <Cell fill="#22c55e"/>
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-
-            {/* Revenue / cost waterfall */}
-            <Card title="Revenue & Cost Breakdown">
-              <div style={{ padding:'8px 4px' }}>
-                {[
-                  {label:'Urea Revenue', val:revUrea, color:'#22c55e'},
-                  {label:'Ammonia Revenue', val:revAmm, color:'#f59e0b'},
-                  {label:'Methanol Revenue', val:revMeth, color:'#a855f7'},
-                  {label:'Variable Costs', val:-vcTotal, color:'#f87171'},
-                  {label:'Fixed Costs', val:-BASE.FC_total, color:'#ef4444'},
-                ].map((item,i)=>{
-                  const maxBar = Math.max(revUrea, vcTotal, BASE.FC_total);
-                  const pct = Math.abs(item.val)/maxBar*100;
-                  return (
-                    <div key={i} style={{marginBottom:12}}>
-                      <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:12}}>
-                        <span style={{color:'#94a3b8'}}>{item.label}</span>
-                        <span style={{color:item.color,fontWeight:600,fontFamily:"'JetBrains Mono',monospace",fontSize:12}}>
-                          {item.val>=0?'+':''}{fmtM(item.val)}
-                        </span>
-                      </div>
-                      <div style={{height:5,background:'rgba(100,120,150,0.08)',borderRadius:3,overflow:'hidden'}}>
-                        <div style={{width:`${Math.min(pct,100)}%`,height:'100%',background:item.color,borderRadius:3,opacity:0.75,transition:'width 0.4s ease'}}/>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div style={{marginTop:14,paddingTop:10,borderTop:'1px solid rgba(100,120,150,0.12)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontWeight:700,color:'#cbd5e1',fontSize:14}}>Net Profit</span>
-                  <span style={{fontWeight:800,color:profitColor,fontFamily:"'JetBrains Mono',monospace",fontSize:20}}>{fmtM(result.profit)}</span>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* VC Table */}
-          <Card title="Variable Costs & Contribution Margins">
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead>
-                <tr style={{borderBottom:'1px solid rgba(100,120,150,0.12)'}}>
-                  {['Product','VC ($/MT)','Price ($/MT)','CM ($/MT)','Volume (MT/mo)','Contribution ($)'].map((h,i)=>(
-                    <th key={i} style={{padding:'8px 12px',textAlign:i===0?'left':'right',color:'#475569',fontWeight:700,fontSize:10,textTransform:'uppercase',letterSpacing:1.2}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  {name:'Ammonia',vc:result.vcAmm,price:ammP,vol:result.K11,color:'#f59e0b'},
-                  {name:'Methanol',vc:result.vcMeth,price:methP,vol:result.D5,color:'#a855f7'},
-                  {name:'Urea',vc:result.vcUrea,price:ureaP,vol:result.K9,color:'#22c55e'},
-                ].map((p,i)=>{
-                  const cm = p.price - p.vc;
-                  return (
-                    <tr key={i} style={{borderBottom:'1px solid rgba(100,120,150,0.06)'}}>
-                      <td style={{padding:'10px 12px',color:p.color,fontWeight:600}}>{p.name}</td>
-                      <td style={{...mono,textAlign:'right'}}>${fmt(p.vc,2)}</td>
-                      <td style={{...mono,textAlign:'right'}}>${fmt(p.price,2)}</td>
-                      <td style={{...mono,textAlign:'right',color:cm>=0?'#22c55e':'#ef4444'}}>${fmt(cm,2)}</td>
-                      <td style={{...mono,textAlign:'right'}}>{fmt(p.vol,0)}</td>
-                      <td style={{...mono,textAlign:'right',color:cm*p.vol>=0?'#22c55e':'#ef4444'}}>{fmtM(cm*p.vol)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
-        </>}
-
-        {/* ═══ SHUTDOWN TAB ═══ */}
-        {tab==='shutdown' && <>
-          <Card title="GPIC Net Profit vs Price of Methanol">
-            {/* Legend */}
-            <div style={{ display:'flex', gap:24, flexWrap:'wrap', marginBottom:14, padding:'0 4px' }}>
-              <LegendItem color="#22c55e" label="MeOH Plant Running (Optimized)" solid/>
-              <LegendItem color="#f97316" label="MeOH Plant Shutdown" solid/>
-              <LegendItem color="#a855f7" dashed label={`MeOH Variable Cost: $${fmt(shutdown.vcMeth,0)}/MT`}/>
-              {crossPrice !== null && <LegendItem color="#fbbf24" dot label={`Shutdown Price: ~$${fmt(crossPrice,0)}/MT`}/>}
-            </div>
-
-            <ResponsiveContainer width="100%" height={420}>
-              <ComposedChart data={shutdown.data} margin={{top:10,right:30,left:15,bottom:30}}>
-                <defs>
-                  <linearGradient id="gRun" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.15}/>
-                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,120,150,0.06)"/>
-                <XAxis
-                  dataKey="methPrice" type="number"
-                  domain={[0,350]}
-                  ticks={[0,20,40,60,80,100,120,140,160,180,200,220,240,260,280,300,320,340]}
-                  tick={{fill:'#475569',fontSize:11}}
-                  label={{value:'Price of Methanol ($/MT)',position:'bottom',fill:'#64748b',fontSize:12,offset:10}}
-                />
-                <YAxis
-                  tick={{fill:'#475569',fontSize:11}}
-                  tickFormatter={v=>`$${v}M`}
-                  label={{value:'Net Profit ($/month)',angle:-90,position:'insideLeft',fill:'#64748b',fontSize:12,offset:0}}
-                  domain={['auto','auto']}
-                />
-                <Tooltip content={<ShutdownTooltip/>}/>
-
-                {/* MeOH VC reference line */}
-                <ReferenceLine x={shutdown.vcMeth} stroke="#a855f7" strokeDasharray="8 4" strokeWidth={2} label={{value:`$${fmt(shutdown.vcMeth,0)} MeOH VC`,position:'top',fill:'#a855f7',fontSize:11,fontWeight:600,offset:10}}/>
-
-                {/* Crossover point */}
-                {crossPrice !== null && (
-                  <ReferenceLine x={crossPrice} stroke="#fbbf24" strokeDasharray="5 3" strokeWidth={1.5}/>
-                )}
-
-                {/* Area fill under running line */}
-                <Area type="monotone" dataKey="runningProfit" fill="url(#gRun)" stroke="none"/>
-
-                {/* Shutdown line (constant horizontal — like the orange in Excel) */}
-                <Line type="monotone" dataKey="shutdownProfit" stroke="#f97316" strokeWidth={3} dot={false} name="MeOH Shutdown"/>
-
-                {/* Running line (increases with MeOH price — like the green in Excel) */}
-                <Line type="monotone" dataKey="runningProfit" stroke="#22c55e" strokeWidth={3} dot={false} name="MeOH Running"/>
-              </ComposedChart>
-            </ResponsiveContainer>
-          </Card>
-
-          {/* Shutdown KPIs */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))', gap:14, marginTop:16 }}>
-            <KPI
-              title="Methanol Shutdown Price"
-              value={crossPrice !== null ? `~$${fmt(crossPrice,0)}/MT` : 'Always profitable'}
-              sub="Price where running = shutdown profit"
-              color="#fbbf24" big
-            />
-            <KPI
-              title="Current Methanol Price"
-              value={`$${methP}/MT`}
-              sub={methP > (crossPrice||0) ? '✓ Above shutdown — keep running' : '⚠ Below shutdown — consider stopping'}
-              color={methP > (crossPrice||0) ? '#22c55e' : '#ef4444'} big
-            />
-            <KPI
-              title="MeOH Variable Cost"
-              value={`$${fmt(shutdown.vcMeth,1)}/MT`}
-              sub={`Price - VC = $${fmt(methP - shutdown.vcMeth,1)}/MT`}
-              color="#a855f7" big
-            />
-            <KPI
-              title="Running vs Shutdown Δ"
-              value={fmtM(result.profit - shutdown.shutdownProfitVal)}
-              sub="At current methanol price"
-              color={result.profit > shutdown.shutdownProfitVal ? '#22c55e' : '#ef4444'} big
-            />
-          </div>
-
-          {/* Explanation card */}
-          <div style={{ background:'rgba(15,23,42,0.4)', borderRadius:12, border:'1px solid rgba(100,120,150,0.06)', padding:'18px 22px', marginTop:16, fontSize:13, color:'#64748b', lineHeight:1.8 }}>
-            <div style={{ fontWeight:700, color:'#94a3b8', marginBottom:8, fontSize:14 }}>📌 Understanding the Shutdown Decision</div>
-            <p style={{margin:'0 0 8px'}}>
-              The <span style={{color:'#22c55e',fontWeight:600}}>green line</span> shows total complex net profit with the methanol plant running — the LP optimizer finds the best production level at each methanol market price.
-            </p>
-            <p style={{margin:'0 0 8px'}}>
-              The <span style={{color:'#f97316',fontWeight:600}}>orange line</span> shows the profit when the methanol plant is fully shut down. This is <strong>not</strong> just "zero methanol revenue" — shutting down methanol impacts the entire complex: ammonia loses ~5,580 MT/month capacity, urea production becomes CO₂-limited (via CDR), and ammonia VC increases by $15/MT.
-            </p>
-            <p style={{margin:'0 0 8px'}}>
-              The <span style={{color:'#a855f7',fontWeight:600}}>purple dashed line</span> shows methanol variable cost. Notice the shutdown decision point is well <strong>below</strong> the VC — because even when methanol has a negative contribution margin, keeping it running benefits ammonia & urea through the CO₂/CDR linkage.
-            </p>
-            <p style={{margin:0}}>
-              <span style={{color:'#fbbf24',fontWeight:600}}>Shutdown decision:</span> Only shut down methanol when its market price falls below ~${crossPrice !== null ? fmt(crossPrice,0) : '—'}/MT, not at the variable cost of ${fmt(shutdown.vcMeth,0)}/MT.
-            </p>
-          </div>
-        </>}
-
-        {/* ═══ SENSITIVITY TAB ═══ */}
-        {tab==='sensitivity' && <>
-          <Card title="Profit Sensitivity to Natural Gas Price">
-            <ResponsiveContainer width="100%" height={380}>
-              <ComposedChart data={gasSens} margin={{top:10,right:30,left:15,bottom:25}}>
-                <defs>
-                  <linearGradient id="gGas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.2}/>
-                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0.05}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,120,150,0.06)"/>
-                <XAxis dataKey="gasPrice" tick={{fill:'#475569',fontSize:11}} label={{value:'Natural Gas Price ($/MMBTU)',position:'bottom',fill:'#64748b',fontSize:12,offset:8}}/>
-                <YAxis tick={{fill:'#475569',fontSize:11}} tickFormatter={v=>`$${v}M`} label={{value:'Net Profit ($M/month)',angle:-90,position:'insideLeft',fill:'#64748b',fontSize:12}}/>
-                <Tooltip content={({active,payload,label})=>active&&payload?.[0]?(
-                  <div style={{background:'rgba(10,15,30,0.96)',border:'1px solid rgba(100,120,150,0.25)',borderRadius:10,padding:'12px 16px',fontSize:13}}>
-                    <div style={{color:'#94a3b8',marginBottom:6}}>Gas: ${label}/MMBTU</div>
-                    <div style={{color:payload[0].value>=0?'#22c55e':'#ef4444',fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>${payload[0].value.toFixed(2)}M/month</div>
-                  </div>
-                ):null}/>
-                <ReferenceLine y={0} stroke="rgba(100,120,150,0.2)"/>
-                <ReferenceLine x={gasP} stroke="#fbbf24" strokeDasharray="5 3" strokeWidth={1.5} label={{value:`Current $${gasP}`,position:'top',fill:'#fbbf24',fontSize:11,fontWeight:600}}/>
-                <Area type="monotone" dataKey="profit" fill="url(#gGas)" stroke="none"/>
-                <Line type="monotone" dataKey="profit" stroke="#3b82f6" strokeWidth={2.5} dot={false} name="Net Profit ($M)"/>
-              </ComposedChart>
-            </ResponsiveContainer>
-          </Card>
-
-          <Card title="Gas Price Impact Reference">
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-              <thead>
-                <tr style={{borderBottom:'1px solid rgba(100,120,150,0.12)'}}>
-                  {['Gas $/MMBTU','Monthly Profit','vs Current','Amm VC','MeOH VC','Urea VC'].map((h,i)=>(
-                    <th key={i} style={{padding:'8px 12px',textAlign:i===0?'left':'right',color:'#475569',fontWeight:700,fontSize:10,textTransform:'uppercase',letterSpacing:1}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[1,2,3,4,5,6,7,8,9,10].map(g=>{
-                  const r = solveLP(ammP,methP,ureaP,g,maxAmm,maxMeth,maxUrea,maxGas,days);
-                  const vc = calcVC(g);
-                  const diff = r.profit - result.profit;
-                  const curr = g===gasP;
-                  return (
-                    <tr key={g} style={{borderBottom:'1px solid rgba(100,120,150,0.05)',background:curr?'rgba(59,130,246,0.08)':'transparent'}}>
-                      <td style={{padding:'8px 12px',color:curr?'#60a5fa':'#94a3b8',fontWeight:curr?700:400}}>${g}{curr?' ◄':''}</td>
-                      <td style={{...mono,textAlign:'right',color:r.profit>=0?'#22c55e':'#ef4444'}}>{fmtM(r.profit)}</td>
-                      <td style={{...mono,textAlign:'right',color:diff>=0?'#22c55e':'#ef4444'}}>{diff>=0?'+':''}{fmtM(diff)}</td>
-                      <td style={{...mono,textAlign:'right'}}>${fmt(vc.amm_A,1)}</td>
-                      <td style={{...mono,textAlign:'right'}}>${fmt(vc.meth,1)}</td>
-                      <td style={{...mono,textAlign:'right'}}>${fmt(vc.urea_A,1)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
-        </>}
-
-        <div style={{ marginTop:28, paddingTop:12, borderTop:'1px solid rgba(100,120,150,0.06)', textAlign:'center', fontSize:10, color:'#334155', letterSpacing:1 }}>
-          GPIC LP Profitability Optimizer • Simplex LP + Integer Constraints • Model v31
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={lb}>{l}</label>
+      <div style={{ position: 'relative' }}>
+        <input type="number" value={v} step={step} onChange={e => s(+e.target.value)}
+          style={{ width: '100%', background: 'rgba(8,12,20,0.8)', border: `1px solid ${c}25`, borderRadius: 8, color: '#e2e8f0', padding: '8px 58px 8px 10px', fontSize: 14, ...mn, fontWeight: 500, outline: 'none', boxSizing: 'border-box' }}
+          onFocus={e => e.target.style.borderColor = c + '80'} onBlur={e => e.target.style.borderColor = c + '25'} />
+        <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: '#475569', ...mn, pointerEvents: 'none' }}>{u}</span>
       </div>
     </div>
   );
 }
 
-// ─── REUSABLE COMPONENTS ───────────────────────────────────────────────────
-function NumInput({label,v,set,unit,accent,step=1}) {
+function KPI({ t, v, s, co, b }) {
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:5}}>
-      <label style={{fontSize:10,color:'#475569',textTransform:'uppercase',letterSpacing:1.5,fontWeight:700}}>{label}</label>
-      <div style={{position:'relative'}}>
-        <input type="number" value={v} step={step} onChange={e=>set(+e.target.value)} style={{
-          width:'100%',background:'rgba(8,12,20,0.8)',border:`1px solid ${accent}25`,borderRadius:8,
-          color:'#e2e8f0',padding:'9px 60px 9px 10px',fontSize:14,fontFamily:"'JetBrains Mono',monospace",fontWeight:500,outline:'none',boxSizing:'border-box',transition:'border-color 0.2s',
-        }} onFocus={e=>e.target.style.borderColor=accent+'80'} onBlur={e=>e.target.style.borderColor=accent+'25'}/>
-        <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',fontSize:10,color:'#475569',fontFamily:"'JetBrains Mono',monospace",pointerEvents:'none'}}>{unit}</span>
-      </div>
+    <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: 12, border: '1px solid rgba(100,120,150,0.06)', padding: b ? '16px 20px' : '12px 16px', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: co, opacity: 0.6 }} />
+      <div style={{ fontSize: 10, color: '#475569', textTransform: 'uppercase', letterSpacing: 1.5, fontWeight: 700, marginBottom: 5 }}>{t}</div>
+      <div style={{ fontSize: b ? 20 : 17, fontWeight: 800, color: co, ...mn, marginBottom: 2 }}>{v}</div>
+      <div style={{ fontSize: 11, color: '#475569' }}>{s}</div>
     </div>
   );
 }
 
-function KPI({title,value,sub,color,big}) {
+function Cd({ t, children }) {
   return (
-    <div style={{background:'rgba(15,23,42,0.4)',borderRadius:12,border:'1px solid rgba(100,120,150,0.06)',padding:big?'18px 22px':'14px 18px',position:'relative',overflow:'hidden'}}>
-      <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:color,opacity:0.6}}/>
-      <div style={{fontSize:10,color:'#475569',textTransform:'uppercase',letterSpacing:1.5,fontWeight:700,marginBottom:6}}>{title}</div>
-      <div style={{fontSize:big?22:18,fontWeight:800,color,fontFamily:"'JetBrains Mono',monospace",marginBottom:3}}>{value}</div>
-      <div style={{fontSize:11,color:'#475569'}}>{sub}</div>
-    </div>
-  );
-}
-
-function Card({title,children}) {
-  return (
-    <div style={{background:'rgba(15,23,42,0.35)',borderRadius:14,border:'1px solid rgba(100,120,150,0.06)',padding:'18px 20px',marginBottom:16}}>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
-        <div style={{width:3,height:16,background:'#3b82f6',borderRadius:2}}/>
-        <h3 style={{fontSize:14,fontWeight:600,margin:0,color:'#94a3b8'}}>{title}</h3>
+    <div style={{ background: 'rgba(15,23,42,0.35)', borderRadius: 14, border: '1px solid rgba(100,120,150,0.06)', padding: '16px 18px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{ width: 3, height: 14, background: '#3b82f6', borderRadius: 2 }} />
+        <h3 style={{ fontSize: 13, fontWeight: 600, margin: 0, color: '#94a3b8' }}>{t}</h3>
       </div>
       {children}
     </div>
   );
 }
 
-function LegendItem({color,label,solid,dashed,dot}) {
+function Leg({ c, l, solid, dash, dot }) {
   return (
-    <div style={{display:'flex',alignItems:'center',gap:7}}>
-      {solid && <div style={{width:22,height:3,background:color,borderRadius:2}}/>}
-      {dashed && <div style={{width:22,height:0,borderTop:`2px dashed ${color}`}}/>}
-      {dot && <div style={{width:8,height:8,background:color,borderRadius:'50%'}}/>}
-      <span style={{fontSize:12,color:'#94a3b8'}}>{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      {solid && <div style={{ width: 20, height: 3, background: c, borderRadius: 2 }} />}
+      {dash && <div style={{ width: 20, height: 0, borderTop: `2px dashed ${c}` }} />}
+      {dot && <div style={{ width: 7, height: 7, background: c, borderRadius: '50%' }} />}
+      <span style={{ fontSize: 11, color: '#94a3b8' }}>{l}</span>
     </div>
   );
 }
 
-const mono = {padding:'8px 12px',color:'#e2e8f0',fontFamily:"'JetBrains Mono',monospace",fontWeight:500,fontSize:13};
+const STip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  const ru = payload.find(p => p.dataKey === 'run');
+  const sh = payload.find(p => p.dataKey === 'shut');
+  const d = ru && sh ? ru.value - sh.value : 0;
+  return (
+    <div style={tb}>
+      <div style={{ color: '#94a3b8', marginBottom: 8, fontWeight: 600, borderBottom: '1px solid rgba(100,120,150,0.15)', paddingBottom: 6 }}>Methanol: ${label}/MT</div>
+      {ru && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}><span style={{ color: '#22c55e' }}>● Running</span><span style={{ ...mn, color: '#22c55e' }}>${ru.value.toFixed(2)}M</span></div>}
+      {sh && <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}><span style={{ color: '#f97316' }}>● Shutdown</span><span style={{ ...mn, color: '#f97316' }}>${sh.value.toFixed(2)}M</span></div>}
+      <div style={{ borderTop: '1px solid rgba(100,120,150,0.15)', paddingTop: 6, display: 'flex', justifyContent: 'space-between' }}>
+        <span style={{ color: '#cbd5e1', fontWeight: 600 }}>Δ</span>
+        <span style={{ ...mn, color: d > 0.01 ? '#22c55e' : d < -0.01 ? '#ef4444' : '#fbbf24' }}>{d > 0 ? '+' : ''}{d.toFixed(3)}M</span>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════
+export default function Dashboard() {
+  const [aP, saP] = useState(325);
+  const [mP, smP] = useState(80);
+  const [uP, suP] = useState(400);
+  const [gP, sgP] = useState(5);
+  const [mxA, smxA] = useState(1320);
+  const [mxM, smxM] = useState(1250);
+  const [mxU, smxU] = useState(2150);
+  const [mxG, smxG] = useState(128);
+  const [mi, smi] = useState(4);
+  const [tab, stab] = useState('optimizer');
+  const days = MD[mi];
+
+  const res = useMemo(() => solve(aP, mP, uP, gP, mxA, mxM, mxU, mxG, days), [aP, mP, uP, gP, mxA, mxM, mxU, mxG, days]);
+  const sd = useMemo(() => shutdownAnalysis(aP, uP, gP, mxA, mxM, mxU, mxG, days), [aP, uP, gP, mxA, mxM, mxU, mxG, days]);
+  const gs = useMemo(() => {
+    const d = [];
+    for (let g = 0.5; g <= 10; g += 0.25) {
+      d.push({ g, p: solve(aP, mP, uP, g, mxA, mxM, mxU, mxG, days).profit / 1e6 });
+    }
+    return d;
+  }, [aP, mP, uP, mxA, mxM, mxU, mxG, days]);
+
+  const pc = res.profit >= 0 ? '#22c55e' : '#ef4444';
+  const rA = res.K11 * aP;
+  const rMet = res.D5 * mP;
+  const rU = res.K9 * uP;
+  const vcT = res.K11 * res.va + res.D5 * res.vm + res.K9 * res.vu;
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#080c14', color: '#e2e8f0', fontFamily: "'DM Sans',sans-serif" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+      {/* HEADER */}
+      <header style={{ background: 'linear-gradient(90deg,rgba(34,197,94,0.05),rgba(59,130,246,0.05),rgba(249,115,22,0.05))', borderBottom: '1px solid rgba(100,120,150,0.1)', padding: '16px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: 'linear-gradient(135deg,#22c55e,#3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: '#080c14' }}>LP</div>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: 4, color: '#475569', textTransform: 'uppercase', fontWeight: 600 }}>GPIC Complex Profitability</div>
+            <h1 style={{ fontSize: 21, fontWeight: 700, margin: 0, color: '#f1f5f9' }}>LP Optimizer Dashboard</h1>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(15,23,42,0.6)', borderRadius: 10, padding: 3, border: '1px solid rgba(100,120,150,0.1)' }}>
+          {[{ id: 'optimizer', l: '⚡ Optimizer' }, { id: 'shutdown', l: '🏭 MeOH Shutdown' }, { id: 'sensitivity', l: '📊 Gas Sensitivity' }].map(t =>
+            <button key={t.id} onClick={() => stab(t.id)} style={{ padding: '7px 14px', borderRadius: 7, border: 'none', background: tab === t.id ? 'rgba(59,130,246,0.2)' : 'transparent', color: tab === t.id ? '#60a5fa' : '#64748b', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>{t.l}</button>
+          )}
+        </div>
+      </header>
+
+      <div style={{ padding: '18px 28px', maxWidth: 1440, margin: '0 auto' }}>
+
+        {/* INPUTS */}
+        <div style={{ background: 'rgba(15,23,42,0.5)', borderRadius: 14, border: '1px solid rgba(100,120,150,0.08)', padding: '18px 22px', marginBottom: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <div style={{ width: 3, height: 18, background: 'linear-gradient(180deg,#3b82f6,#22c55e)', borderRadius: 2 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>Market Inputs & Plant Parameters</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: 10 }}>
+            <NI l="Ammonia Price" v={aP} s={saP} u="$/MT" c="#f59e0b" />
+            <NI l="Methanol Price" v={mP} s={smP} u="$/MT" c="#a855f7" />
+            <NI l="Urea Price" v={uP} s={suP} u="$/MT" c="#22c55e" />
+            <NI l="Natural Gas" v={gP} s={sgP} u="$/MMBTU" c="#ef4444" step={0.25} />
+            <NI l="Max Ammonia" v={mxA} s={smxA} u="MT/D" c="#f59e0b" />
+            <NI l="Max Methanol" v={mxM} s={smxM} u="MT/D" c="#a855f7" />
+            <NI l="Max Urea" v={mxU} s={smxU} u="MT/D" c="#22c55e" />
+            <NI l="Max Gas" v={mxG} s={smxG} u="MMSCFD" c="#ef4444" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={lb}>Month ({days}d)</label>
+              <select value={mi} onChange={e => smi(+e.target.value)} style={{ background: 'rgba(8,12,20,0.8)', border: '1px solid rgba(100,120,150,0.15)', borderRadius: 8, color: '#e2e8f0', padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
+                {MO.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══ OPTIMIZER TAB ═══ */}
+        {tab === 'optimizer' && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 12, marginBottom: 18 }}>
+              <KPI t="Net Monthly Profit" v={fM(res.profit)} s={`Case ${res.ct} • ${MO[mi]}`} co={pc} b />
+              <KPI t="Ammonia" v={`${ff(res.dA, 1)} MT/D`} s={`${ff(res.K11, 0)} MT saleable`} co="#f59e0b" />
+              <KPI t="Methanol" v={`${ff(res.dM, 1)} MT/D`} s={`${ff(res.D5, 0)} MT total`} co="#a855f7" />
+              <KPI t="Urea" v={`${ff(res.dU, 1)} MT/D`} s={`${ff(res.K9, 0)} MT saleable`} co="#22c55e" />
+              <KPI t="Gas Consumption" v={`${ff(res.gas, 2)} MMSCFD`} s={`${((res.gas / mxG) * 100).toFixed(1)}% of ${mxG}`} co="#ef4444" />
+              <KPI t="Boiler Steam" v={`${ff(res.st, 1)} T/h`} s="HP steam production" co="#06b6d4" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
+              <Cd t="Daily Production vs Capacity">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={[{ n: 'Ammonia', p: res.dA, c: mxA }, { n: 'Methanol', p: res.dM, c: mxM }, { n: 'Urea', p: res.dU, c: mxU }]} layout="vertical" margin={{ left: 10, right: 25, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,120,150,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#475569', fontSize: 11 }} />
+                    <YAxis dataKey="n" type="category" tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }} width={72} />
+                    <Tooltip content={({ active, payload }) => active && payload?.[0] ? (
+                      <div style={tb}>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600, marginBottom: 3 }}>{payload[0].payload.n}</div>
+                        <div style={{ color: '#60a5fa' }}>Prod: {ff(payload[0].payload.p, 1)} MT/D</div>
+                        <div style={{ color: '#475569' }}>Cap: {ff(payload[0].payload.c)} MT/D</div>
+                        <div style={{ color: '#fbbf24' }}>Util: {((payload[0].payload.p / payload[0].payload.c) * 100).toFixed(1)}%</div>
+                      </div>
+                    ) : null} />
+                    <Bar dataKey="c" radius={[0, 4, 4, 0]} barSize={22} fill="rgba(100,120,150,0.1)" />
+                    <Bar dataKey="p" radius={[0, 6, 6, 0]} barSize={22}>
+                      <Cell fill="#f59e0b" /><Cell fill="#a855f7" /><Cell fill="#22c55e" />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Cd>
+
+              <Cd t="Revenue & Cost Breakdown">
+                <div style={{ padding: '6px 4px' }}>
+                  {[
+                    { l: 'Urea Revenue', v: rU, c: '#22c55e' },
+                    { l: 'Ammonia Revenue', v: rA, c: '#f59e0b' },
+                    { l: 'Methanol Revenue', v: rMet, c: '#a855f7' },
+                    { l: 'Variable Costs', v: -vcT, c: '#f87171' },
+                    { l: 'Fixed Costs', v: -M.FC, c: '#ef4444' },
+                  ].map((x, i) => {
+                    const mx = Math.max(rU, vcT, M.FC);
+                    return (
+                      <div key={i} style={{ marginBottom: 11 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2, fontSize: 12 }}>
+                          <span style={{ color: '#94a3b8' }}>{x.l}</span>
+                          <span style={{ ...mn, color: x.c, fontSize: 12 }}>{x.v >= 0 ? '+' : ''}{fM(x.v)}</span>
+                        </div>
+                        <div style={{ height: 5, background: 'rgba(100,120,150,0.08)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(Math.abs(x.v) / mx * 100, 100)}%`, height: '100%', background: x.c, borderRadius: 3, opacity: 0.7 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid rgba(100,120,150,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, color: '#cbd5e1', fontSize: 13 }}>Net Profit</span>
+                    <span style={{ fontWeight: 800, color: pc, ...mn, fontSize: 18 }}>{fM(res.profit)}</span>
+                  </div>
+                </div>
+              </Cd>
+            </div>
+
+            <Cd t="Variable Costs & Contribution Margins">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(100,120,150,0.12)' }}>
+                    {['Product', 'VC ($/MT)', 'Price', 'CM', 'Volume', 'Contribution'].map((h, i) =>
+                      <th key={i} style={{ padding: '7px 10px', textAlign: i ? 'right' : 'left', color: '#475569', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{h}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { n: 'Ammonia (saleable)', vc: res.va, p: aP, vol: res.K11, c: '#f59e0b' },
+                    { n: 'Methanol', vc: res.vm, p: mP, vol: res.D5, c: '#a855f7' },
+                    { n: 'Urea', vc: res.vu, p: uP, vol: res.K9, c: '#22c55e' },
+                  ].map((x, i) => {
+                    const cm = x.p - x.vc;
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid rgba(100,120,150,0.05)' }}>
+                        <td style={{ padding: '8px 10px', color: x.c, fontWeight: 600 }}>{x.n}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '8px 10px' }}>${ff(x.vc, 2)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '8px 10px' }}>${ff(x.p, 2)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '8px 10px', color: cm >= 0 ? '#22c55e' : '#ef4444' }}>${ff(cm, 2)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '8px 10px' }}>{ff(x.vol, 0)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '8px 10px', color: cm * x.vol >= 0 ? '#22c55e' : '#ef4444' }}>{fM(cm * x.vol)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Cd>
+
+            <Cd t="Model Verification (compare with Excel LP Solver)">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 6, fontSize: 12, color: '#64748b' }}>
+                <div>R13 (MeOH threshold): <span style={mn}>{ff(getR13(days), 2)}</span></div>
+                <div>K10 (NH₃ production): <span style={mn}>{ff(res.K10, 2)}</span></div>
+                <div>K9 (Urea saleable): <span style={mn}>{ff(res.K9, 2)}</span></div>
+                <div>K8 (NH₃→Urea): <span style={mn}>{ff(res.K8, 2)}</span></div>
+                <div>K11 (NH₃ saleable): <span style={mn}>{ff(res.K11, 2)}</span></div>
+                <div>Total gas Nm³: <span style={mn}>{ff(res.gTot, 0)}</span></div>
+                <div>Case: <span style={mn}>{res.ct} (y1={res.y1})</span></div>
+                <div>VC Amm: <span style={mn}>${ff(res.va, 2)}</span></div>
+                <div>VC Meth: <span style={mn}>${ff(res.vm, 2)}</span></div>
+                <div>VC Urea: <span style={mn}>${ff(res.vu, 2)}</span></div>
+              </div>
+            </Cd>
+          </>
+        )}
+
+        {/* ═══ SHUTDOWN TAB ═══ */}
+        {tab === 'shutdown' && (
+          <>
+            <Cd t="GPIC Net Profit vs Price of Methanol">
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 12, padding: '0 4px' }}>
+                <Leg c="#22c55e" solid l="MeOH Plant Running (Optimized)" />
+                <Leg c="#f97316" solid l="MeOH Plant Shutdown" />
+                <Leg c="#a855f7" dash l={`MeOH Variable Cost: $${ff(sd.vcM, 0)}/MT`} />
+                {sd.cross != null && <Leg c="#fbbf24" dot l={`Shutdown Price: ~$${ff(sd.cross, 0)}/MT`} />}
+              </div>
+              <ResponsiveContainer width="100%" height={400}>
+                <ComposedChart data={sd.data} margin={{ top: 10, right: 30, left: 15, bottom: 28 }}>
+                  <defs>
+                    <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.12} />
+                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,120,150,0.06)" />
+                  <XAxis dataKey="mp" type="number" domain={[0, 350]} ticks={[0, 40, 80, 120, 160, 200, 240, 280, 320]} tick={{ fill: '#475569', fontSize: 11 }} label={{ value: 'Price of Methanol ($/MT)', position: 'bottom', fill: '#64748b', fontSize: 11, offset: 10 }} />
+                  <YAxis tick={{ fill: '#475569', fontSize: 11 }} tickFormatter={v => `$${v}M`} label={{ value: 'Net Profit ($/month)', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 11, offset: 0 }} />
+                  <Tooltip content={<STip />} />
+                  <ReferenceLine x={sd.vcM} stroke="#a855f7" strokeDasharray="8 4" strokeWidth={2} label={{ value: `$${ff(sd.vcM, 0)} VC`, position: 'top', fill: '#a855f7', fontSize: 11, fontWeight: 600, offset: 8 }} />
+                  {sd.cross != null && <ReferenceLine x={sd.cross} stroke="#fbbf24" strokeDasharray="5 3" strokeWidth={1.5} />}
+                  <Area type="monotone" dataKey="run" fill="url(#gR)" stroke="none" />
+                  <Line type="monotone" dataKey="shut" stroke="#f97316" strokeWidth={3} dot={false} name="Shutdown" />
+                  <Line type="monotone" dataKey="run" stroke="#22c55e" strokeWidth={3} dot={false} name="Running" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </Cd>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(250px,1fr))', gap: 12, marginTop: 14 }}>
+              <KPI t="Shutdown Decision Price" v={sd.cross != null ? `~$${ff(sd.cross, 0)}/MT` : 'Always profitable'} s="Where running ≈ shutdown profit" co="#fbbf24" b />
+              <KPI t="Current MeOH Price" v={`$${mP}/MT`} s={mP > (sd.cross || 0) ? '✓ Keep running' : '⚠ Consider shutdown'} co={mP > (sd.cross || 0) ? '#22c55e' : '#ef4444'} b />
+              <KPI t="MeOH Variable Cost" v={`$${ff(sd.vcM, 1)}/MT`} s={`Margin: $${ff(mP - sd.vcM, 1)}/MT`} co="#a855f7" b />
+              <KPI t="Running vs Shutdown Δ" v={fM(res.profit - sd.sp)} s="At current MeOH price" co={res.profit > sd.sp ? '#22c55e' : '#ef4444'} b />
+            </div>
+
+            <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: 12, border: '1px solid rgba(100,120,150,0.06)', padding: '16px 20px', marginTop: 14, fontSize: 12, color: '#64748b', lineHeight: 1.8 }}>
+              <div style={{ fontWeight: 700, color: '#94a3b8', marginBottom: 6, fontSize: 13 }}>Understanding the Shutdown Decision</div>
+              <p style={{ margin: '0 0 6px' }}>
+                The <b style={{ color: '#22c55e' }}>green line</b> shows total complex profit with methanol running (LP-optimized). The <b style={{ color: '#f97316' }}>orange line</b> shows profit with methanol shut down — including full CDR/CO₂ impact: ammonia loses {ff(M.capB, 0)} MT/mo capacity, urea becomes CO₂-limited, ammonia VC increases by ${M.vcPen}/MT.
+              </p>
+              <p style={{ margin: 0 }}>
+                The <b style={{ color: '#a855f7' }}>purple dashed</b> marks methanol variable cost (~${ff(sd.vcM, 0)}/MT). The actual shutdown decision occurs well <b>below</b> this — at ~${sd.cross != null ? ff(sd.cross, 0) : '—'}/MT — because running methanol benefits ammonia and urea via CO₂/CDR linkage and lower specific gas consumption (903.61 vs 1015.68 Nm³/MT).
+              </p>
+            </div>
+          </>
+        )}
+
+        {/* ═══ SENSITIVITY TAB ═══ */}
+        {tab === 'sensitivity' && (
+          <>
+            <Cd t="Profit Sensitivity to Natural Gas Price">
+              <ResponsiveContainer width="100%" height={360}>
+                <ComposedChart data={gs} margin={{ top: 10, right: 30, left: 15, bottom: 25 }}>
+                  <defs>
+                    <linearGradient id="gG" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#ef4444" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(100,120,150,0.06)" />
+                  <XAxis dataKey="g" tick={{ fill: '#475569', fontSize: 11 }} label={{ value: 'Gas Price ($/MMBTU)', position: 'bottom', fill: '#64748b', fontSize: 11, offset: 8 }} />
+                  <YAxis tick={{ fill: '#475569', fontSize: 11 }} tickFormatter={v => `$${v}M`} />
+                  <Tooltip content={({ active, payload, label }) => active && payload?.[0] ? (
+                    <div style={tb}>
+                      <div style={{ color: '#94a3b8', marginBottom: 4 }}>Gas: ${label}/MMBTU</div>
+                      <div style={{ ...mn, color: payload[0].value >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>${payload[0].value.toFixed(2)}M/month</div>
+                    </div>
+                  ) : null} />
+                  <ReferenceLine y={0} stroke="rgba(100,120,150,0.2)" />
+                  <ReferenceLine x={gP} stroke="#fbbf24" strokeDasharray="5 3" strokeWidth={1.5} label={{ value: `Current $${gP}`, position: 'top', fill: '#fbbf24', fontSize: 11, fontWeight: 600 }} />
+                  <Area type="monotone" dataKey="p" fill="url(#gG)" stroke="none" />
+                  <Line type="monotone" dataKey="p" stroke="#3b82f6" strokeWidth={2.5} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </Cd>
+
+            <Cd t="Gas Price Impact Table">
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(100,120,150,0.12)' }}>
+                    {['Gas $/MMBTU', 'Monthly Profit', 'vs Current', 'VC Amm', 'VC Meth', 'VC Urea'].map((h, i) =>
+                      <th key={i} style={{ padding: '7px 10px', textAlign: i ? 'right' : 'left', color: '#475569', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>{h}</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(g => {
+                    const r = solve(aP, mP, uP, g, mxA, mxM, mxU, mxG, days);
+                    const v = getVC(g);
+                    const d = r.profit - res.profit;
+                    const cur = g === gP;
+                    return (
+                      <tr key={g} style={{ borderBottom: '1px solid rgba(100,120,150,0.05)', background: cur ? 'rgba(59,130,246,0.08)' : 'transparent' }}>
+                        <td style={{ padding: '7px 10px', color: cur ? '#60a5fa' : '#94a3b8', fontWeight: cur ? 700 : 400 }}>${g}{cur ? ' ◄' : ''}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '7px 10px', color: r.profit >= 0 ? '#22c55e' : '#ef4444' }}>{fM(r.profit)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '7px 10px', color: d >= 0 ? '#22c55e' : '#ef4444' }}>{d >= 0 ? '+' : ''}{fM(d)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '7px 10px' }}>${ff(v.aA, 1)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '7px 10px' }}>${ff(v.m, 1)}</td>
+                        <td style={{ ...mn, textAlign: 'right', padding: '7px 10px' }}>${ff(v.uA, 1)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Cd>
+          </>
+        )}
+
+        <div style={{ marginTop: 24, paddingTop: 10, borderTop: '1px solid rgba(100,120,150,0.06)', textAlign: 'center', fontSize: 10, color: '#334155', letterSpacing: 1 }}>
+          GPIC LP Profitability Optimizer • Simplex LP + Integer Constraints • Model v31
+        </div>
+      </div>
+    </div>
+  );
+}
