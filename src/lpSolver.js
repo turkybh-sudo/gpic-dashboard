@@ -1,11 +1,11 @@
 /**
- * GPIC Profitability Optimizer - GLPK.js Simplex Solver
+ * GPIC Profitability Optimizer - GLPK Simplex Solver
  * Exact Simplex solution with <0.001% accuracy guarantee
- * 
- * Solves the 29-constraint MILP problem for Case A vs Case B selection
+ * Uses GLPK from CDN (loaded in index.html)
  */
 
-import { GLPK, GLP } from 'glpk.js';
+// GLPK is loaded from CDN in index.html
+const { GLPK, GLP } = window;
 
 // Constants (exact from Excel LP model)
 const K7 = 0.57;
