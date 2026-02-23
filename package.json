@@ -3,18 +3,16 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "GPIC Profitability Optimizer - Simplex LP Solver with GLPK.js",
+  "description": "GPIC Profitability Optimizer - Simplex LP Solver",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "deploy": "npm run build && git add dist -f && git commit -m 'Deploy to GitHub Pages' && git push origin $(git rev-parse --abbrev-ref HEAD):gh-pages"
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^2.12.7",
-    "glpk.js": "^1.5.1"
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
