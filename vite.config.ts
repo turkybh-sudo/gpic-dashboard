@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
 export default defineConfig(({ mode }) => {
   // Replace 'YOUR_REPO_NAME' with your actual GitHub repository name
   // e.g. if repo is github.com/turki/plant-dashboard → '/plant-dashboard/'
-  const base = mode === 'production' ? '/YOUR_REPO_NAME/' : '/';
+ const base = mode === 'production' ? '/gpic-dashboard/' : '/';
 
   return {
     base,
