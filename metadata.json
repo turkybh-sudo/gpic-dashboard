@@ -1,0 +1,5 @@
+{
+  "name": "Plant Profitability & Optimization Dashboard",
+  "description": "Industrial LP solver dashboard for optimizing Ammonia, Methanol, and Urea production mix using Simplex algorithm.",
+  "requestFramePermissions": []
+}
