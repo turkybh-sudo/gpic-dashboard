@@ -376,7 +376,7 @@ export default function App() {
                     <VCRow label="Sea Water" value={result.vcAmmBreakdown.swVC} total={result.vcAmmBreakdown.total} color="bg-teal-500" />
                     <div className="pt-3 border-t border-slate-800 flex justify-between">
                       <span className="text-xs font-bold text-amber-500 uppercase">Total</span>
-                      <span className="text-xs font-mono font-bold text-violet">${fmt(result.vcAmmBreakdown.total, 2)}/MT</span>
+                      <span className="text-xs font-mono font-bold text-black">${fmt(result.vcAmmBreakdown.total, 2)}/MT</span>
                     </div>
                   </div>
                 </Card>
@@ -391,7 +391,7 @@ export default function App() {
                     <VCRow label="Sea Water" value={result.vcMethBreakdown.swVC} total={result.vcMethBreakdown.total} color="bg-teal-500" />
                     <div className="pt-3 border-t border-slate-800 flex justify-between">
                       <span className="text-xs font-bold text-purple-500 uppercase">Total</span>
-                      <span className="text-xs font-mono font-bold text-violet">${fmt(result.vcMethBreakdown.total, 2)}/MT</span>
+                      <span className="text-xs font-mono font-bold text-black">${fmt(result.vcMethBreakdown.total, 2)}/MT</span>
                     </div>
                   </div>
                 </Card>
@@ -408,7 +408,7 @@ export default function App() {
                     <VCRow label="SW + Demin" value={result.vcUreaBreakdown.swVC + result.vcUreaBreakdown.deminVC} total={result.vcUreaBreakdown.total} color="bg-teal-500" />
                     <div className="pt-3 border-t border-slate-800 flex justify-between">
                       <span className="text-xs font-bold text-emerald-500 uppercase">Total</span>
-                      <span className="text-xs font-mono font-bold text-violet">${fmt(result.vcUreaBreakdown.total, 2)}/MT</span>
+                      <span className="text-xs font-mono font-bold text-black">${fmt(result.vcUreaBreakdown.total, 2)}/MT</span>
                     </div>
                   </div>
                 </Card>
