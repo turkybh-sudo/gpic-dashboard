@@ -151,7 +151,7 @@ export default function App() {
           <div className="p-2 bg-emerald-500/10 rounded-lg">
             <Factory className="w-6 h-6 text-emerald-500" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">GPIC Optimizer</h1>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Product mix</h1>
         </div>
 
         <div className="space-y-8">
