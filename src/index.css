@@ -4,44 +4,11 @@
   --gpic-green: #006341;
   --gpic-navy: #001A71;
   --gpic-red: #E70033;
-  --surface: #ffffff;
-  --surface-muted: #f8fafc;
-  --border-subtle: #dbe2ea;
-  --text-strong: #0f172a;
-  --text-muted: #475569;
   --font-brand: 'Montserrat', 'Arial', sans-serif;
 }
 
 body {
   font-family: var(--font-brand);
-  background: var(--surface-muted);
-  color: var(--text-strong);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #94a3b8 transparent;
-}
-
-*:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--gpic-green) 70%, white);
-  outline-offset: 2px;
-}
-
-input[type='range'] {
-  accent-color: var(--gpic-green);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #0b1220;
-    --surface-muted: #020617;
-    --border-subtle: #1f2937;
-    --text-strong: #e2e8f0;
-    --text-muted: #94a3b8;
-  }
 }
 
 @media print {
