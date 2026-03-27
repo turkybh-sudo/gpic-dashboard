@@ -21,6 +21,9 @@ import {
   Menu,
   Printer,
   X,
+  ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import {
   XAxis,
@@ -63,6 +66,8 @@ const fmt = (n: number | null, d = 0) =>
   n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtM = (n: number | null) =>
   n == null ? '—' : `$${(n / 1e6).toFixed(2)}M`;
+const fmtSmart = (n: number | null) =>
+  n == null ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 1 });
 
 // ─── Brand Colors (GPIC Official) ───────────────────────────────────────────
 const GPIC_GREEN = '#006341';
@@ -81,7 +86,11 @@ export default function App() {
   const [monthIdx, setMonthIdx] = useState(4);
   const [tab, setTab]         = useState('optimizer');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCompact, setSidebarCompact] = useState(false);
   const [gtRunning, setGtRunning]     = useState(true);
+  const [controlsOpen, setControlsOpen] = useState(true);
+  const [capacityOpen, setCapacityOpen] = useState(true);
+  const [opsOpen, setOpsOpen] = useState(true);
 
   // ── System preference dark mode (no manual toggle needed) ──
   const isDark = useSystemTheme();
@@ -142,17 +151,17 @@ export default function App() {
   }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
   const chartTheme = isDark ? {
-    grid: '#1e293b', text: '#94a3b8',
-    tooltipBg: '#1e293b', tooltipBorder: '#334155', tooltipColor: '#f8fafc',
-    barCap: '#475569',
+    grid: '#243449', text: '#9eb0c7',
+    tooltipBg: '#0f1a2a', tooltipBorder: '#334155', tooltipColor: '#f8fafc',
+    barCap: '#43566f',
   } : {
-    grid: '#e2e8f0', text: '#64748b',
-    tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipColor: '#0f172a',
-    barCap: '#cbd5e1',
+    grid: '#dde5ef', text: '#586b84',
+    tooltipBg: '#ffffff', tooltipBorder: '#cfdae7', tooltipColor: '#0f172a',
+    barCap: '#b7c7d9',
   };
 
   return (
-    <div className="min-h-screen font-sans selection:bg-emerald-500/30 bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-300">
+    <div className="min-h-screen font-sans selection:bg-emerald-600/25 bg-[var(--surface)] text-[var(--text-primary)] transition-colors duration-300">
 
       {/* Mobile backdrop */}
       {sidebarOpen && (
@@ -164,7 +173,8 @@ export default function App() {
 
       {/* ── Sidebar ── */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
+        "fixed left-0 top-0 h-full bg-[var(--surface-elevated)] border-r border-[var(--border-subtle)] p-4 md:p-5 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
+        sidebarCompact ? "w-[18rem]" : "w-[20.5rem]",
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
 
@@ -175,31 +185,43 @@ export default function App() {
         </div>
 
         {/* Logo / Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col gap-0.5">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex flex-col gap-0.5 min-w-0">
               <img src={gpicLogo} alt="GPIC" className="w-28 object-contain p-1 dark:brightness-90" />
-              <h1 className="text-[11px] font-medium tracking-wider text-center" style={{ color: GPIC_NAVY }}>
+              <h1 className="text-[11px] font-semibold tracking-[0.16em] text-center truncate" style={{ color: GPIC_NAVY }}>
                 Complex Optimizer
               </h1>
             </div>
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSidebarCompact((prev) => !prev)}
+              className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Toggle sidebar width"
+            >
+              {sidebarCompact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Close sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="space-y-8">
-          <section>
-            <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
-              <Settings2 className="w-4 h-4" />
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Controls</h2>
-            </div>
+        <div className="space-y-5">
+          <section className="gpic-card p-4">
+            <CollapsibleHeader
+              label="Market Controls"
+              icon={<Settings2 className="w-4 h-4" />}
+              isOpen={controlsOpen}
+              onToggle={() => setControlsOpen((prev) => !prev)}
+            />
 
-            <div className="space-y-6">
+            {controlsOpen && <div className="space-y-5 mt-4">
               <ControlSlider label="Ammonia Price"  value={ammP}   onChange={setAmmP}   min={200} max={900} unit="$/MT" />
               <ControlSlider label="Methanol Price" value={methP}  onChange={setMethP}  min={0}   max={900} unit="$/MT" />
               <ControlSlider label="Urea Price"     value={ureaP}  onChange={setUreaP}  min={200} max={900} unit="$/MT" />
@@ -232,29 +254,36 @@ export default function App() {
 
               {/* Plant Capacities */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
-                  <Gauge className="w-4 h-4" />
-                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Plant Capacities</h2>
-                </div>
-                <div className="space-y-6">
+                <button onClick={() => setCapacityOpen((prev) => !prev)} className="w-full flex items-center justify-between mb-3 text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-2">
+                    <Gauge className="w-4 h-4" />
+                    <h2 className="text-[11px] font-semibold uppercase tracking-wider">Plant Capacities</h2>
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", capacityOpen ? "rotate-180" : "")} />
+                </button>
+                {capacityOpen && <div className="space-y-6">
                   <ControlSlider label="Max Ammonia" value={maxAmm}  onChange={setMaxAmm}  min={1000} max={1500} unit="MT/D" />
                   <ControlSlider label="Max Methanol" value={maxMeth} onChange={setMaxMeth} min={800}  max={1500} unit="MT/D" />
                   <ControlSlider label="Max Urea"     value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" />
-                </div>
+                </div>}
               </div>
 
               {/* Month Selector */}
               <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
-                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Operating Month</label>
-                <select
+                <button onClick={() => setOpsOpen((prev) => !prev)} className="w-full flex items-center justify-between text-slate-500 dark:text-slate-400">
+                  <label className="text-[11px] font-medium">Operating Month</label>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", opsOpen ? "rotate-180" : "")} />
+                </button>
+                {opsOpen && <select
                   value={monthIdx}
                   onChange={(e) => setMonthIdx(parseInt(e.target.value))}
                   className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors"
+                  aria-label="Operating month"
                 >
                   {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                </select>
+                </select>}
               </div>
-            </div>
+            </div>}
           </section>
 
           <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
@@ -270,10 +299,10 @@ export default function App() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="md:pl-80 min-h-screen transition-all duration-300">
+      <main className={cn("min-h-screen transition-all duration-300", sidebarCompact ? "md:pl-[18rem]" : "md:pl-[20.5rem]")}>
 
         {/* Header */}
-        <header className="no-print h-14 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-6 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
+        <header className="no-print h-14 border-b border-[var(--border-subtle)] flex items-center justify-between px-4 md:px-6 bg-[var(--surface-elevated)]/90 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
           <div className="flex items-center gap-3 md:gap-4">
             {/* Hamburger — mobile only */}
             <button
@@ -283,7 +312,7 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             {/* Tab nav — scrollable on mobile */}
-            <nav className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[60vw] md:max-w-none">
+            <nav className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[60vw] md:max-w-none">
               <TabButton active={tab === 'optimizer'}   onClick={() => { setTab('optimizer');   setSidebarOpen(false); }} label="Optimizer"      icon={<Zap       className="w-3.5 h-3.5" />} />
               <TabButton active={tab === 'shutdown'}    onClick={() => { setTab('shutdown');    setSidebarOpen(false); }} label="MeOH Shutdown" icon={<Activity   className="w-3.5 h-3.5" />} />
               <TabButton active={tab === 'sensitivity'} onClick={() => { setTab('sensitivity'); setSidebarOpen(false); }} label="Gas Sensitivity" icon={<TrendingUp className="w-3.5 h-3.5" />} />
@@ -307,18 +336,18 @@ export default function App() {
         <StatusBanner result={result} />
 
         {/* ── Page Content ── */}
-        <div className="p-4 md:p-8 space-y-6 md:space-y-8">
+        <div className="p-4 md:p-8 space-y-6 md:space-y-8 max-w-[1700px]">
 
           {/* ════════════════ OPTIMIZER TAB ════════════════ */}
           {tab === 'optimizer' && (
             <>
               {/* KPI — Hero profit + 4 product cards */}
               <ProfitHero result={result} monthName={MONTHS[monthIdx]} />
-              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
                 <KPICard title="Ammonia"  value={`${fmt(result.dailyAmm,  1)} MT/D`} sub={`${fmt(result.K11, 0)} MT saleable`} color="amber"  />
                 <KPICard title="Methanol" value={`${fmt(result.dailyMeth, 1)} MT/D`} sub={`${fmt(result.D5,  0)} MT total`}    color="purple" />
                 <KPICard title="Urea"     value={`${fmt(result.dailyUrea, 1)} MT/D`} sub={`${fmt(result.K9,  0)} MT saleable`} color="green"  />
-                <KPICard title="Gas Consumption" value={`${fmt(result.gas, 2)} MMSCFD`} sub={`${((result.gas / maxGas) * 100).toFixed(1)}% of ${maxGas} MMSCFD limit`} color="rose" />
+                <KPICard title="Gas Consumption" value={`${fmtSmart(result.gas)} MMSCFD`} sub={`${((result.gas / maxGas) * 100).toFixed(1)}% of ${maxGas} MMSCFD limit`} color="rose" />
               </div>
 
               {/* Production vs Capacity + Profit Contribution */}
@@ -795,12 +824,12 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
     : 'text-emerald-600 dark:text-emerald-400';
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
+    <div className="gpic-card p-6 md:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: big profit number */}
         <div>
-          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Net Monthly Profit — {monthName}</p>
-          <div className={cn('text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400 mb-2">Net Monthly Profit — {monthName}</p>
+          <div className={cn('text-4xl md:text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
             {fmtM(result.profit)}
           </div>
           <p className="mt-2 text-[11px] font-semibold" style={isRunning && !isLoss ? { color: GPIC_GREEN } : {}}>
@@ -810,7 +839,7 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
           </p>
         </div>
         {/* Right: three quick stats */}
-        <div className="flex gap-6 md:gap-10">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 md:gap-10 min-w-[260px]">
           <div className="text-right">
             <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Ammonia</p>
             <p className="text-xl font-bold font-mono text-amber-500">{result.dailyAmm.toFixed(0)} MT/D</p>
@@ -829,7 +858,7 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
         </div>
       </div>
       {/* Bottom strip — gas and simple operational context */}
-      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-8 gap-y-2 text-[11px]">
+      <div className="mt-6 pt-4 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-x-8 gap-y-2 text-[11px]">
         <div className="flex items-center gap-2">
           <span className="text-slate-400">Gas Consumed</span>
           <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{result.gas.toFixed(2)} MMSCFD</span>
@@ -884,12 +913,12 @@ function StatusBanner({ result }: { result: LPResult }) {
 
   return (
     <div
-      className="status-banner bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
+      className="status-banner bg-[var(--surface-elevated)] border-b border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
       style={{ borderLeftWidth: 4, borderLeftStyle: 'solid', borderLeftColor: cfg.borderColor }}
     >
       {/* Left: status badge + description */}
       <div className="flex items-center gap-3">
-        <span className={cn('w-2 h-2 rounded-full animate-pulse flex-shrink-0', cfg.dot)} />
+        <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot)} />
         <span className={cn(
           'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border',
           cfg.badge
@@ -928,21 +957,39 @@ function StatusBanner({ result }: { result: LPResult }) {
   );
 }
 
+function CollapsibleHeader({ label, icon, isOpen, onToggle }: {
+  label: string;
+  icon: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button onClick={onToggle} className="w-full flex items-center justify-between text-slate-600 dark:text-slate-300">
+      <span className="flex items-center gap-2">
+        {icon}
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider">{label}</h2>
+      </span>
+      <ChevronDown className={cn("w-4 h-4 transition-transform", isOpen ? "rotate-180" : "")} />
+    </button>
+  );
+}
+
 function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
   label: string; value: number; onChange: (v: number) => void;
   min: number; max: number; step?: number; unit: string;
 }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <div className="flex justify-between items-center">
-        <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</label>
+        <label className="text-[11px] font-medium tracking-wide text-slate-600 dark:text-slate-300">{label}</label>
         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-md px-2 py-1 border border-slate-300 dark:border-slate-700 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all">
           <input
             type="number"
             value={value}
             onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
             step={step}
-            className="w-16 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
+            className="w-20 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
+            aria-label={`${label} value`}
           />
           <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal select-none">{unit}</span>
         </div>
@@ -950,7 +997,8 @@ function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 transition-all"
+        className="gpic-range w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer transition-all"
+        aria-label={label}
       />
     </div>
   );
@@ -963,9 +1011,9 @@ function TabButton({ active, onClick, label, icon }: {
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-4 py-1.5 rounded-md text-[11px] font-semibold transition-all uppercase tracking-wider whitespace-nowrap",
+        "flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-semibold transition-all uppercase tracking-wider whitespace-nowrap",
         active
-          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 shadow-sm"
+          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
           : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
       )}
     >
@@ -986,20 +1034,20 @@ function KPICard({ title, value, sub, color, big }: {
     rose:    'text-rose-600 dark:text-rose-500',
   };
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-lg transition-colors duration-300">
-      <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide">{title}</h3>
-      <div className={cn("font-bold font-mono tracking-tight", big ? "text-3xl" : "text-2xl", colors[color])}>{value}</div>
-      {sub && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{sub}</p>}
+    <div className="gpic-card p-4">
+      <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2 tracking-[0.12em] uppercase">{title}</h3>
+      <div className={cn("font-extrabold font-mono tracking-tight", big ? "text-3xl" : "text-2xl", colors[color])}>{value}</div>
+      {sub && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{sub}</p>}
     </div>
   );
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
+    <div className="gpic-card p-5 md:p-6">
       <div className="flex items-center gap-2 mb-5">
         <div className="w-1 h-5 rounded-full" style={{ backgroundColor: GPIC_GREEN }} />
-        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 tracking-normal">{title}</h3>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-100 tracking-normal">{title}</h3>
       </div>
       {children}
     </div>
@@ -1050,10 +1098,10 @@ function MarginRow({ name, vc, price, vol, color }: { name: string; vc: number; 
 
 function SettingsCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
+    <div className="gpic-card p-5 md:p-6">
       <div className="flex items-center gap-2 mb-5">
         {icon}
-        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{title}</h3>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h3>
       </div>
       <div className="space-y-4">{children}</div>
     </div>
@@ -1082,13 +1130,14 @@ function SettingsInput({ label, value, onChange, step = 1, decimals = 2 }: {
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <label className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{label}</label>
+      <label className="text-xs text-slate-600 dark:text-slate-300 shrink-0 leading-snug">{label}</label>
       <input
         type="number"
         value={Number(value.toFixed(decimals))}
         onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
         step={step}
         className="w-36 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-right text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-colors"
+        aria-label={label}
       />
     </div>
   );
