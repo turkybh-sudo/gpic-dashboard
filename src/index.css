@@ -62,6 +62,10 @@ body {
   min-height: 100vh;
 }
 
+.app-shell {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
@@ -132,6 +136,22 @@ body {
   border-radius: 999px;
   background: radial-gradient(circle, rgba(0, 99, 65, 0.12), transparent 70%);
   pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .app-shell {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .gpic-hero-card::after {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .app-shell {
+    padding-top: 1.5rem;
+  }
 }
 
 @media print {

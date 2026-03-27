@@ -55,29 +55,25 @@ export const TAB_ITEMS: Array<{
   {
     id: 'optimizer',
     label: 'Optimizer',
-    description:
-      'An executive operating view that keeps the commercial outcome, production mix, and gas exposure in a single decision frame.',
+    description: 'Production and profit optimizer.',
     icon: LayoutDashboard,
   },
   {
     id: 'shutdown',
     label: 'MeOH Shutdown',
-    description:
-      'A direct comparison between keeping methanol at minimum load and taking the unit offline under the current market deck.',
+    description: 'Compare MeOH running and shutdown at current prices.',
     icon: Activity,
   },
   {
     id: 'sensitivity',
     label: 'Gas Sensitivity',
-    description:
-      'An exposure view that shows how natural gas pricing reshapes monthly profit and where the economic risk line sits.',
+    description: 'Natural gas price sensitivity.',
     icon: TrendingUp,
   },
   {
     id: 'settings',
     label: 'Settings',
-    description:
-      'Grouped model constants for the LP solver, organized to make review and calibration easier for technical stakeholders.',
+    description: 'Grouped model settings.',
     icon: Settings2,
   },
 ];

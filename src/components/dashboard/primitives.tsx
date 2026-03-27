@@ -8,21 +8,32 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+type SurfaceCardProps = {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
+};
+
 export function SurfaceCard({
   eyebrow,
   title,
   subtitle,
   actions,
   children,
-}: {
-  eyebrow?: string;
-  title: string;
-  subtitle?: string;
-  actions?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+  className,
+  bodyClassName,
+}: SurfaceCardProps) {
   return (
-    <section className="rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-5 shadow-[var(--shadow-md)] md:p-6">
+    <section
+      className={cn(
+        'rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-5 shadow-[var(--shadow-md)] md:p-6',
+        className,
+      )}
+    >
       <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           {eyebrow && <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{eyebrow}</p>}
@@ -31,7 +42,7 @@ export function SurfaceCard({
         </div>
         {actions && <div className="shrink-0">{actions}</div>}
       </div>
-      {children}
+      <div className={bodyClassName}>{children}</div>
     </section>
   );
 }
@@ -190,16 +201,16 @@ export function MetricRailCard({
 }: {
   title: string;
   value: string;
-  subtitle: string;
-  helper: string;
+  subtitle?: string;
+  helper?: string;
   tone: Tone;
 }) {
   return (
     <div className="rounded-[26px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow-sm)]">
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{title}</p>
       <p className={cn('mt-3 font-[var(--font-numeric)] text-3xl font-semibold tracking-tight', TONE_STYLES[tone].strongText)}>{value}</p>
-      <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>
-      <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{helper}</p>
+      {subtitle && <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>}
+      {helper && <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{helper}</p>}
     </div>
   );
 }
@@ -241,14 +252,14 @@ export function MetricSnapshot({
 }: {
   label: string;
   value: string;
-  note: string;
+  note?: string;
   tone?: Tone;
 }) {
   return (
     <div className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{label}</p>
       <p className={cn('mt-2 font-[var(--font-numeric)] text-xl font-semibold', TONE_STYLES[tone].strongText)}>{value}</p>
-      <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{note}</p>
+      {note && <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{note}</p>}
     </div>
   );
 }
@@ -298,14 +309,19 @@ export function CostBreakdownCard({
   fmt: (value: number | null, digits?: number) => string;
 }) {
   return (
-    <SurfaceCard eyebrow="Cost architecture" title={title}>
-      <div className="space-y-3">
+    <SurfaceCard
+      eyebrow="Cost architecture"
+      title={title}
+      className="h-full"
+      bodyClassName="flex h-full flex-col"
+    >
+      <div className="flex h-full flex-col gap-3">
         {rows.map((row) => (
           <React.Fragment key={row.label}>
             <CostRow label={row.label} value={row.value} total={total} tone={tone} fmt={fmt} fmtPercent={(value, digits = 1) => `${value.toFixed(digits)}%`} />
           </React.Fragment>
         ))}
-        <div className="mt-4 rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
+        <div className="mt-auto rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total variable cost</p>
           <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[tone].strongText)}>
             ${fmt(total, 2)}/MT
