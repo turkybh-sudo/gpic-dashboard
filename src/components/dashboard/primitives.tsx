@@ -312,8 +312,8 @@ export function CostBreakdownCard({
     <SurfaceCard
       eyebrow="Cost architecture"
       title={title}
-      className="h-full"
-      bodyClassName="flex h-full flex-col"
+      className="flex h-full flex-col overflow-hidden"
+      bodyClassName="flex flex-1 flex-col"
     >
       <div className="flex h-full flex-col gap-3">
         {rows.map((row) => (
@@ -321,7 +321,7 @@ export function CostBreakdownCard({
             <CostRow label={row.label} value={row.value} total={total} tone={tone} fmt={fmt} fmtPercent={(value, digits = 1) => `${value.toFixed(digits)}%`} />
           </React.Fragment>
         ))}
-        <div className="mt-auto rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
+        <div className="mt-6 rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
           <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total variable cost</p>
           <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[tone].strongText)}>
             ${fmt(total, 2)}/MT
