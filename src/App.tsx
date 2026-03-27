@@ -595,8 +595,8 @@ const result = useLPSolver(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, m
                 </SettingsCard>
 
                 <SettingsCard title="Process Coefficients" icon={<Activity className="w-4 h-4 text-purple-400" />}>
-                  <SettingsInput label="NH₃ → Urea (K7)" value={settings.K7} onChange={(v) => updateSetting('K7', v)} step={0.01} decimals={4} />
-                  <SettingsInput label="Alpha (PSA coefficient)" value={settings.alpha} onChange={(v) => updateSetting('alpha', v)} step={0.001} decimals={6} />
+                 <SettingsInput label="NH₃ → Urea (K7)" value={settings.K7} onChange={(v) => updateSetting('K7', v)} step={0.01} decimals={4} />
+                  <SettingsInput label="Min MeOH Load — Running (MT/D)" value={settings.methMin_MTD} onChange={(v) => updateSetting('methMin_MTD', v)} step={1} decimals={0} />
                   <SettingsInput label="CO₂ Capacity Coefficient" value={settings.C33_coeff} onChange={(v) => updateSetting('C33_coeff', v)} step={0.001} decimals={4} />
                   <SettingsInput label="NM³ → MMSCFD Factor" value={settings.NM3_to_MMSCFD} onChange={(v) => updateSetting('NM3_to_MMSCFD', v)} step={0.001} decimals={3} />
                 </SettingsCard>
