@@ -197,24 +197,29 @@ function calcAmmVC(
   swPrice: number, 
   fcwPrice: number, 
   deminPrice: number, 
-  s: Settings
+  s: Settings,
+  gtRunning: boolean = true
 ): VCBreakdown {
   // ── Gas VC (C7) ──
   // C4 = SGC, C6 = gasCost, C7 = C4 × C6
   const gasVC = s.SGC_amm_A * gasCost;
 
   // ── Power VC (C21) ──
-  // Power ratio C11 = C9/C10
-  const powerRatio = s.amm_GT_gen / s.amm_Import_gen;
-  // Monthly values
   const totalPowerMonth = s.amm_total_power_annual / 12;  // C13
   const prodMonth = s.amm_prod_annual / 12;               // C2
-  const importPower = totalPowerMonth / powerRatio;        // C14
-  const importCost = importPower * s.MEW_power_price;      // C16
-  const gtPower = totalPowerMonth - importPower;           // C17
-  const gtCostPerKwh = s.GT_nm3_per_kwh * gasCost;        // C19
-  const gtCost = gtCostPerKwh * gtPower;                   // C20
-  const powerVC = (gtCost + importCost) / prodMonth;       // C21
+  let powerVC: number;
+  if (gtRunning) {
+    const powerRatio = s.amm_GT_gen / s.amm_Import_gen;
+    const importPower = totalPowerMonth / powerRatio;        // C14
+    const importCost = importPower * s.MEW_power_price;      // C16
+    const gtPower = totalPowerMonth - importPower;           // C17
+    const gtCostPerKwh = s.GT_nm3_per_kwh * gasCost;        // C19
+    const gtCost = gtCostPerKwh * gtPower;                   // C20
+    powerVC = (gtCost + importCost) / prodMonth;             // C21
+  } else {
+    // GT off: all power from MEW import
+    powerVC = (totalPowerMonth * s.MEW_power_price) / prodMonth;
+  }
 
   // ── HP Steam VC (C25) ──
   // C25 = C23 × C24 × C6
@@ -252,22 +257,28 @@ function calcMethVC(
   swPrice: number, 
   fcwPrice: number, 
   deminPrice: number, 
-  s: Settings
+  s: Settings,
+  gtRunning: boolean = true
 ): VCBreakdown {
   // ── Gas VC (F7) ──
   const gasVC = s.SGC_meth * gasCost;
 
   // ── Power VC (F21) ──
-  // Same GT/Import ratio as ammonia (same GT and import capacity)
-  const powerRatio = s.amm_GT_gen / s.amm_Import_gen;
   const totalPowerMonth = s.meth_total_power_annual / 12;  // F13
   const prodMonth = s.meth_prod_annual / 12;               // F2
-  const importPower = totalPowerMonth / powerRatio;         // F14
-  const importCost = importPower * s.MEW_power_price;       // F16
-  const gtPower = totalPowerMonth - importPower;            // F17
-  const gtCostPerKwh = s.GT_nm3_per_kwh * gasCost;         // uses C19 formula
-  const gtCost = gtCostPerKwh * gtPower;                    // F20
-  const powerVC = (gtCost + importCost) / prodMonth;        // F21
+  let powerVC: number;
+  if (gtRunning) {
+    const powerRatio = s.amm_GT_gen / s.amm_Import_gen;
+    const importPower = totalPowerMonth / powerRatio;         // F14
+    const importCost = importPower * s.MEW_power_price;       // F16
+    const gtPower = totalPowerMonth - importPower;            // F17
+    const gtCostPerKwh = s.GT_nm3_per_kwh * gasCost;         // uses C19 formula
+    const gtCost = gtCostPerKwh * gtPower;                    // F20
+    powerVC = (gtCost + importCost) / prodMonth;              // F21
+  } else {
+    // GT off: all power from MEW import
+    powerVC = (totalPowerMonth * s.MEW_power_price) / prodMonth;
+  }
 
   // ── HP Steam VC (F25) ──
   // F25 = C24 × F23 × F6 (note: F6 = same gas cost)
@@ -383,7 +394,7 @@ function calcUreaVC(
 // PUBLIC VC CALCULATION
 // Computes all three product VCs with full component breakdowns
 // ═══════════════════════════════════════════════════════════════════════════════
-export function calcVC(gasPrice: number, s: Settings) {
+export function calcVC(gasPrice: number, s: Settings, gtRunning: boolean = true) {
   const gasCost = gasUsdPerNm3(gasPrice, s);
   
   // Calculate dynamic utility prices
@@ -391,8 +402,8 @@ export function calcVC(gasPrice: number, s: Settings) {
   const fcwPrice = s.FCW_slope * gasPrice + s.FCW_intercept;
   const deminPrice = s.Demin_slope * gasPrice + s.Demin_intercept;
 
-  const ammBreakdown = calcAmmVC(gasCost, swPrice, fcwPrice, deminPrice, s);
-  const methBreakdown = calcMethVC(gasCost, swPrice, fcwPrice, deminPrice, s);
+  const ammBreakdown = calcAmmVC(gasCost, swPrice, fcwPrice, deminPrice, s, gtRunning);
+  const methBreakdown = calcMethVC(gasCost, swPrice, fcwPrice, deminPrice, s, gtRunning);
   const ureaBreakdown = calcUreaVC(gasCost, ammBreakdown.total, methBreakdown.total, swPrice, fcwPrice, deminPrice, s);
 
   return {
@@ -412,13 +423,13 @@ export function calcVC(gasPrice: number, s: Settings) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export function calcGas(
   K10: number, D5: number, K9: number, days: number,
-  isShutdown: boolean, s: Settings
+  isShutdown: boolean, s: Settings, gtRunning: boolean = true
 ) {
   const sgc_amm = isShutdown ? s.SGC_amm_B : s.SGC_amm_A;
   const amm_gas = sgc_amm * K10;        // C12 = C11 × K10
   const meth_gas = s.SGC_meth * D5;     // D12 = D11 × D5
   const boiler_gas = s.boiler_meth * D5 + s.boiler_amm * K10 + s.boiler_urea * K9; // C15
-  const gt_gas = s.GT_gas_per_day * days;     // C14
+  const gt_gas = gtRunning ? s.GT_gas_per_day * days : 0;  // C14 — zero if GT off
   const flare_gas = s.flare_gas_per_day * days; // C16
 
   const total_nm3 = amm_gas + meth_gas + gt_gas + boiler_gas + flare_gas; // C18
@@ -437,7 +448,8 @@ export function calcGas(
   };
 }
 
-function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings): number {
+function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings, gtRunning: boolean = true): number {
+  if (!gtRunning) return mmscfd_base;  // No GT topup when shutdown
   const headroom = maxGas - mmscfd_base;
   if (headroom > 0) {
     return mmscfd_base + Math.min(headroom, s.GT_additional_max);
@@ -461,9 +473,10 @@ export function solveLP(
   maxGas: number,
   days: number,
   s: Settings = BASE_DEFAULTS,
-  forceCase?: 'A' | 'B'
+  forceCase?: 'A' | 'B',
+  gtRunning: boolean = true
 ): LPResult {
-  const vc = calcVC(gasP, s);
+  const vc = calcVC(gasP, s, gtRunning);
   const K1 = days;
   
   // Constraints constants
@@ -472,8 +485,8 @@ export function solveLP(
   // Inverse: total_nm3 = mmscfd * 1e6 * days / factor
   const maxGasTotal = maxGas * 1e6 * days / s.NM3_to_MMSCFD;
   
-  // Fixed gas loads (Boilers are variable, GT/Flare are fixed)
-  const fixedGas = s.GT_gas_per_day * days + s.flare_gas_per_day * days;
+  // Fixed gas loads: GT is zero when shutdown, flare always present
+  const fixedGas = (gtRunning ? s.GT_gas_per_day * days : 0) + s.flare_gas_per_day * days;
   const availGasForProd = maxGasTotal - fixedGas;
 
   // Helper to construct and solve the model for a specific case
@@ -594,8 +607,8 @@ export function solveLP(
     const K8 = s.K7 * K9;
     const K11 = K10 - K8;
     
-    const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s);
-    const gasAfterGT = applyGTAdditional(gasCalc.mmscfd_base, maxGas, s);
+const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
+    const gasAfterGT = applyGTAdditional(gasCalc.mmscfd_base, maxGas, s, gtRunning);;
     
     // Hard limit check (solver should handle this, but applyGTAdditional might add more)
     // If base gas > maxGas, solver would have failed. 
@@ -699,10 +712,11 @@ export function useLPSolver(
   maxUrea: number,
   maxGas: number,
   days: number,
-  settings: Settings
+  settings: Settings,
+  gtRunning: boolean = true
 ) {
   return useMemo(
-    () => solveLP(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings),
-    [ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings]
+    () => solveLP(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, undefined, gtRunning),
+    [ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]
   );
 }
