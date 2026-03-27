@@ -1,63 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --gpic-green: #0b6b49;
-  --gpic-navy: #12213f;
-  --gpic-red: #c93148;
-  --font-brand: 'Inter', 'Montserrat', 'Arial', sans-serif;
-  --surface-1: #ffffff;
-  --surface-2: #f8fafc;
-  --surface-3: #eef2f7;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --border-soft: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --shadow-card: 0 8px 24px -16px rgba(15, 23, 42, 0.28);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface-1: #0f172a;
-    --surface-2: #111c33;
-    --surface-3: #17233d;
-    --text-primary: #e2e8f0;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --border-soft: #233252;
-    --border-strong: #334155;
-    --shadow-card: 0 14px 28px -18px rgba(2, 6, 23, 0.72);
-  }
+  --gpic-green: #006341;
+  --gpic-navy: #001A71;
+  --gpic-red: #E70033;
+  --font-brand: 'Montserrat', 'Arial', sans-serif;
 }
 
 body {
   font-family: var(--font-brand);
-  letter-spacing: -0.01em;
-  background: var(--surface-2);
-  color: var(--text-primary);
-}
-
-*:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--gpic-green) 60%, white);
-  outline-offset: 2px;
-  border-radius: 0.5rem;
-}
-
-input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 9999px;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  margin-top: -5px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  background: var(--gpic-green);
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.1);
 }
 
 @media print {

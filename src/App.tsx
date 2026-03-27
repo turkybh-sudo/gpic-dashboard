@@ -82,11 +82,6 @@ export default function App() {
   const [tab, setTab]         = useState('optimizer');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gtRunning, setGtRunning]     = useState(true);
-  const [sidebarSections, setSidebarSections] = useState({
-    market: true,
-    capacity: true,
-    context: true,
-  });
 
   // ── System preference dark mode (no manual toggle needed) ──
   const isDark = useSystemTheme();
@@ -147,17 +142,17 @@ export default function App() {
   }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
   const chartTheme = isDark ? {
-    grid: '#253659', text: '#a5b4cc',
-    tooltipBg: '#0f172a', tooltipBorder: '#334155', tooltipColor: '#f1f5f9',
-    barCap: '#3f4f70',
+    grid: '#1e293b', text: '#94a3b8',
+    tooltipBg: '#1e293b', tooltipBorder: '#334155', tooltipColor: '#f8fafc',
+    barCap: '#475569',
   } : {
-    grid: '#d7dee8', text: '#5b6c84',
+    grid: '#e2e8f0', text: '#64748b',
     tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipColor: '#0f172a',
-    barCap: '#d8dee8',
+    barCap: '#cbd5e1',
   };
 
   return (
-    <div className="min-h-screen font-sans selection:bg-emerald-500/20 bg-[var(--surface-2)] text-[var(--text-primary)] transition-colors duration-300">
+    <div className="min-h-screen font-sans selection:bg-emerald-500/30 bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-300">
 
       {/* Mobile backdrop */}
       {sidebarOpen && (
@@ -169,7 +164,7 @@ export default function App() {
 
       {/* ── Sidebar ── */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full w-[19rem] bg-[var(--surface-1)] border-r border-[var(--border-soft)] p-4 md:p-5 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
+        "fixed left-0 top-0 h-full w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
 
@@ -180,31 +175,29 @@ export default function App() {
         </div>
 
         {/* Logo / Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className="flex flex-col gap-0.5">
-              <img src={gpicLogo} alt="GPIC" className="w-24 object-contain p-1 dark:brightness-90" />
-              <h1 className="text-[10px] font-semibold tracking-[0.15em] text-center uppercase" style={{ color: GPIC_NAVY }}>
+              <img src={gpicLogo} alt="GPIC" className="w-28 object-contain p-1 dark:brightness-90" />
+              <h1 className="text-[11px] font-medium tracking-wider text-center" style={{ color: GPIC_NAVY }}>
                 Complex Optimizer
               </h1>
             </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            aria-label="Close control sidebar"
             className="md:hidden p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="space-y-4">
-            <SidebarSection
-              title="Market Controls"
-              icon={<Settings2 className="w-4 h-4" />}
-              open={sidebarSections.market}
-              onToggle={() => setSidebarSections(prev => ({ ...prev, market: !prev.market }))}
-            >
+        <div className="space-y-8">
+          <section>
+            <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
+              <Settings2 className="w-4 h-4" />
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Controls</h2>
+            </div>
 
             <div className="space-y-6">
               <ControlSlider label="Ammonia Price"  value={ammP}   onChange={setAmmP}   min={200} max={900} unit="$/MT" />
@@ -225,7 +218,6 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => setGtRunning(prev => !prev)}
-                  aria-label="Toggle gas turbine operation"
                   className={cn(
                     "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
                     gtRunning ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"
@@ -237,42 +229,35 @@ export default function App() {
                   )} />
                 </button>
               </div>
-            </div>
-            </SidebarSection>
 
-              <SidebarSection
-                title="Plant Capacities"
-                icon={<Gauge className="w-4 h-4" />}
-                open={sidebarSections.capacity}
-                onToggle={() => setSidebarSections(prev => ({ ...prev, capacity: !prev.capacity }))}
-              >
+              {/* Plant Capacities */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
+                  <Gauge className="w-4 h-4" />
+                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Plant Capacities</h2>
+                </div>
                 <div className="space-y-6">
                   <ControlSlider label="Max Ammonia" value={maxAmm}  onChange={setMaxAmm}  min={1000} max={1500} unit="MT/D" />
                   <ControlSlider label="Max Methanol" value={maxMeth} onChange={setMaxMeth} min={800}  max={1500} unit="MT/D" />
                   <ControlSlider label="Max Urea"     value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" />
                 </div>
-              </SidebarSection>
+              </div>
 
               {/* Month Selector */}
-              <div className="space-y-2">
+              <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Operating Month</label>
                 <select
                   value={monthIdx}
                   onChange={(e) => setMonthIdx(parseInt(e.target.value))}
-                  aria-label="Select operating month"
-                  className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors"
+                  className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors"
                 >
                   {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
                 </select>
               </div>
+            </div>
+          </section>
 
-          <SidebarSection
-            title="Model Context"
-            icon={<Info className="w-4 h-4" />}
-            open={sidebarSections.context}
-            onToggle={() => setSidebarSections(prev => ({ ...prev, context: !prev.context }))}
-          >
-          <div className="p-4 bg-slate-100 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700/50">
+          <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
@@ -281,30 +266,24 @@ export default function App() {
 </p>
             </div>
           </div>
-          </SidebarSection>
         </div>
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="md:pl-[19rem] min-h-screen transition-all duration-300">
+      <main className="md:pl-80 min-h-screen transition-all duration-300">
 
         {/* Header */}
-        <header className="no-print h-16 border-b border-[var(--border-soft)] flex items-center justify-between px-4 md:px-8 bg-[var(--surface-1)]/92 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
+        <header className="no-print h-14 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-6 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
           <div className="flex items-center gap-3 md:gap-4">
             {/* Hamburger — mobile only */}
             <button
               onClick={() => setSidebarOpen(prev => !prev)}
-              aria-label="Open control sidebar"
               className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="hidden lg:block">
-              <p className="text-[11px] uppercase tracking-[0.14em] font-semibold text-slate-500">GPIC Executive Dashboard</p>
-              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Complex Optimizer</p>
-            </div>
             {/* Tab nav — scrollable on mobile */}
-            <nav aria-label="Dashboard tabs" className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[70vw] md:max-w-none">
+            <nav className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[60vw] md:max-w-none">
               <TabButton active={tab === 'optimizer'}   onClick={() => { setTab('optimizer');   setSidebarOpen(false); }} label="Optimizer"      icon={<Zap       className="w-3.5 h-3.5" />} />
               <TabButton active={tab === 'shutdown'}    onClick={() => { setTab('shutdown');    setSidebarOpen(false); }} label="MeOH Shutdown" icon={<Activity   className="w-3.5 h-3.5" />} />
               <TabButton active={tab === 'sensitivity'} onClick={() => { setTab('sensitivity'); setSidebarOpen(false); }} label="Gas Sensitivity" icon={<TrendingUp className="w-3.5 h-3.5" />} />
@@ -315,7 +294,6 @@ export default function App() {
             {/* Print / Export */}
             <button
               onClick={() => window.print()}
-              aria-label="Export dashboard via browser print"
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors"
             >
               <Printer className="w-3.5 h-3.5" />
@@ -329,7 +307,7 @@ export default function App() {
         <StatusBanner result={result} />
 
         {/* ── Page Content ── */}
-        <div className="max-w-[1600px] mx-auto p-4 md:p-8 space-y-7 md:space-y-9">
+        <div className="p-4 md:p-8 space-y-6 md:space-y-8">
 
           {/* ════════════════ OPTIMIZER TAB ════════════════ */}
           {tab === 'optimizer' && (
@@ -817,11 +795,11 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
     : 'text-emerald-600 dark:text-emerald-400';
 
   return (
-    <div className="bg-[var(--surface-1)] border border-[var(--border-soft)] rounded-2xl p-5 md:p-6 shadow-[var(--shadow-card)] transition-colors duration-300">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: big profit number */}
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] font-semibold text-slate-500 dark:text-slate-400 mb-2">Net Monthly Profit — {monthName}</p>
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Net Monthly Profit — {monthName}</p>
           <div className={cn('text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
             {fmtM(result.profit)}
           </div>
@@ -851,7 +829,7 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
         </div>
       </div>
       {/* Bottom strip — gas and simple operational context */}
-      <div className="mt-5 pt-4 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-x-8 gap-y-2 text-[11px]">
+      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-8 gap-y-2 text-[11px]">
         <div className="flex items-center gap-2">
           <span className="text-slate-400">Gas Consumed</span>
           <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{result.gas.toFixed(2)} MMSCFD</span>
@@ -906,12 +884,12 @@ function StatusBanner({ result }: { result: LPResult }) {
 
   return (
     <div
-      className="status-banner bg-[var(--surface-1)] border-b border-[var(--border-soft)] flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
+      className="status-banner bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
       style={{ borderLeftWidth: 4, borderLeftStyle: 'solid', borderLeftColor: cfg.borderColor }}
     >
       {/* Left: status badge + description */}
       <div className="flex items-center gap-3">
-        <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot)} />
+        <span className={cn('w-2 h-2 rounded-full animate-pulse flex-shrink-0', cfg.dot)} />
         <span className={cn(
           'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border',
           cfg.badge
@@ -954,29 +932,24 @@ function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
   label: string; value: number; onChange: (v: number) => void;
   min: number; max: number; step?: number; unit: string;
 }) {
-  const id = label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <label htmlFor={`${id}-number`} className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{label}</label>
+        <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</label>
         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-md px-2 py-1 border border-slate-300 dark:border-slate-700 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all">
           <input
-            id={`${id}-number`}
             type="number"
             value={value}
             onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
             step={step}
-            aria-label={`${label} numeric input`}
-            className="w-20 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
+            className="w-16 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
           />
           <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal select-none">{unit}</span>
         </div>
       </div>
       <input
-        id={`${id}-range`}
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        aria-label={`${label} slider`}
         className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 transition-all"
       />
     </div>
@@ -989,11 +962,10 @@ function TabButton({ active, onClick, label, icon }: {
   return (
     <button
       onClick={onClick}
-      aria-pressed={active}
       className={cn(
-        "flex items-center gap-2 px-3.5 py-2 rounded-md text-[11px] font-semibold transition-all uppercase tracking-[0.12em] whitespace-nowrap",
+        "flex items-center gap-2 px-4 py-1.5 rounded-md text-[11px] font-semibold transition-all uppercase tracking-wider whitespace-nowrap",
         active
-          ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400 shadow-sm border border-emerald-500/20"
+          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 shadow-sm"
           : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
       )}
     >
@@ -1014,20 +986,20 @@ function KPICard({ title, value, sub, color, big }: {
     rose:    'text-rose-600 dark:text-rose-500',
   };
   return (
-    <div className="bg-[var(--surface-1)] border border-[var(--border-soft)] rounded-2xl p-4 md:p-5 shadow-[var(--shadow-card)] transition-colors duration-300">
-      <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-muted)] mb-2">{title}</h3>
-      <div className={cn("font-bold font-mono tracking-tight leading-none", big ? "text-3xl" : "text-[1.65rem]", colors[color])}>{value}</div>
-      {sub && <p className="text-xs text-[var(--text-muted)] mt-2 leading-relaxed">{sub}</p>}
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-lg transition-colors duration-300">
+      <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide">{title}</h3>
+      <div className={cn("font-bold font-mono tracking-tight", big ? "text-3xl" : "text-2xl", colors[color])}>{value}</div>
+      {sub && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{sub}</p>}
     </div>
   );
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-[var(--surface-1)] border border-[var(--border-soft)] rounded-2xl p-5 md:p-6 shadow-[var(--shadow-card)] transition-colors duration-300">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
       <div className="flex items-center gap-2 mb-5">
         <div className="w-1 h-5 rounded-full" style={{ backgroundColor: GPIC_GREEN }} />
-        <h3 className="text-[13px] md:text-sm font-semibold text-slate-700 dark:text-slate-200 tracking-normal">{title}</h3>
+        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 tracking-normal">{title}</h3>
       </div>
       {children}
     </div>
@@ -1078,10 +1050,10 @@ function MarginRow({ name, vc, price, vol, color }: { name: string; vc: number; 
 
 function SettingsCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-[var(--surface-1)] border border-[var(--border-soft)] rounded-2xl p-6 shadow-[var(--shadow-card)] transition-colors duration-300">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
       <div className="flex items-center gap-2 mb-5">
         {icon}
-        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-[0.06em]">{title}</h3>
+        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{title}</h3>
       </div>
       <div className="space-y-4">{children}</div>
     </div>
@@ -1116,42 +1088,8 @@ function SettingsInput({ label, value, onChange, step = 1, decimals = 2 }: {
         value={Number(value.toFixed(decimals))}
         onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
         step={step}
-        aria-label={label}
         className="w-36 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-right text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-colors"
       />
     </div>
-  );
-}
-
-function SidebarSection({
-  title,
-  icon,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-xl border border-slate-200/90 dark:border-slate-800/80 bg-slate-50/70 dark:bg-slate-900/35 p-3">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center justify-between gap-2 mb-3"
-        aria-expanded={open}
-        aria-label={`Toggle ${title} section`}
-      >
-        <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-          {icon}
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em]">{title}</h2>
-        </div>
-        <span className="text-[10px] font-semibold text-slate-400">{open ? 'Hide' : 'Show'}</span>
-      </button>
-      {open && <div className="space-y-4">{children}</div>}
-    </section>
   );
 }
