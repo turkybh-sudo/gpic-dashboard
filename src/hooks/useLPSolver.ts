@@ -448,14 +448,16 @@ function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings, gtR
 }
 
 const AMM_CAP_REFERENCE_DAYS = 31;
+const RUNNING_DERATE_CALIBRATION_MTD = 740;
 
 function getRunningAmmConstraintTerms(days: number, methMaxMTD: number, s: Settings) {
-  const fullMethMTD = Math.max(methMaxMTD, s.methMin_MTD + 1e-9);
-  const methRangeMTD = fullMethMTD - s.methMin_MTD;
+  const calibratedMethMinMTD = RUNNING_DERATE_CALIBRATION_MTD;
+  const fullMethMTD = Math.max(methMaxMTD, calibratedMethMinMTD + 1e-9);
+  const methRangeMTD = fullMethMTD - calibratedMethMinMTD;
 
   // `ammCapLoss_A` is stored as the minimum-load monthly loss for a 31-day month.
-  // Convert it back to a daily derate, then scale it linearly between full load
-  // and minimum load for the selected month.
+  // Keep the derate slope calibrated to the original 740 MT/D minimum-load case
+  // so changing `methMin_MTD` only changes the regime threshold, not the PSA slope.
   const ammoniaLossAtMinMTD = s.ammCapLoss_A / AMM_CAP_REFERENCE_DAYS;
 
   return {
