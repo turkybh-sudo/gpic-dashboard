@@ -38,6 +38,7 @@ import {
 } from 'recharts';
 import { useLPSolver, solveLP, calcVC, BASE_DEFAULTS, type Settings } from './hooks/useLPSolver';
 import { clsx, type ClassValue } from 'clsx';
+import gpicLogo from './assets/gpic-logo.png';
 import { twMerge } from 'tailwind-merge';
 
 function cn(...inputs: ClassValue[]) {
@@ -148,11 +149,12 @@ const result = useLPSolver(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, m
     <div className={cn("min-h-screen font-sans selection:bg-emerald-500/30 transition-colors duration-300", theme === 'dark' ? 'dark bg-slate-950 text-slate-200' : 'bg-slate-50 text-slate-900')}>
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 overflow-y-auto z-20 shadow-2xl transition-colors duration-300">
-        <div className="flex items-center gap-3 mb-10">
-          <div className="p-2 bg-emerald-500/10 rounded-lg">
-            <Factory className="w-6 h-6 text-emerald-500" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Product mix</h1>
+        <div className="flex flex-col items-center gap-3 mb-10">
+          <img src={gpicLogo} alt="GPIC" className="w-40 object-contain dark:brightness-90" />
+          <div className="w-full h-px bg-slate-200 dark:bg-slate-800" />
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+            Complex Optimizer
+          </p>
         </div>
 
         <div className="space-y-8">
