@@ -1,1144 +1,1061 @@
-/**
- * GPIC Complex Optimizer — App.tsx
- * All changes applied: GT toggle, fixed alpha, methMin_MTD,
- * GPIC branding, mobile responsive, status banner, print button.
- *
- * NOTE: Place your logo file at src/assets/gpic-logo.png before running.
- */
-
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  LayoutDashboard,
-  TrendingUp,
-  Factory,
-  Settings2,
-  Info,
-  Activity,
-  Zap,
-  RotateCcw,
-  Flame,
   Gauge,
+  Info,
   Menu,
   Printer,
+  RotateCcw,
+  Settings2,
   X,
-  ChevronDown,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from 'lucide-react';
 import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
   Cell,
   ComposedChart,
   Line,
   LineChart,
-  ReferenceLine,
-  PieChart,
   Pie,
+  PieChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import {
-  useLPSolver,
-  solveLP,
-  calcVC,
-  BASE_DEFAULTS,
-  type Settings,
-  type LPResult,
-} from './hooks/useLPSolver';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+import { ExecutiveHero } from './components/dashboard/ExecutiveHero';
+import {
+  GAS_COLORS,
+  MONTHS,
+  MONTH_DAYS,
+  SETTINGS_GROUPS,
+  TAB_ITEMS,
+  TONE_STYLES,
+  type TabId,
+  type Tone,
+} from './components/dashboard/config';
+import {
+  ControlSlider,
+  ContributionBar,
+  CostBreakdownCard,
+  InsightCard,
+  LegendPill,
+  MetricRailCard,
+  MetricSnapshot,
+  MiniAsideStat,
+  SettingsGroupCard,
+  SettingsInput,
+  SidebarSection,
+  StatusChip,
+  SurfaceCard,
+  TabButton,
+} from './components/dashboard/primitives';
+import {
+  BASE_DEFAULTS,
+  calcVC,
+  solveLP,
+  useLPSolver,
+  type LPResult,
+  type Settings,
+} from './hooks/useLPSolver';
 import gpicLogo from './assets/gpic-logo.png';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-const MONTH_DAYS = [31,28,31,30,31,30,31,31,30,31,30,31];
+const fmt = (value: number | null, digits = 0) =>
+  value == null
+    ? '--'
+    : Number(value).toLocaleString('en-US', {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      });
 
-const fmt = (n: number | null, d = 0) =>
-  n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
-const fmtM = (n: number | null) =>
-  n == null ? '—' : `$${(n / 1e6).toFixed(2)}M`;
-const fmtSmart = (n: number | null) =>
-  n == null ? '—' : Number(n).toLocaleString('en-US', { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 1 });
+const fmtM = (value: number | null) => (value == null ? '--' : `$${(value / 1e6).toFixed(2)}M`);
+const fmtSignedM = (value: number) => `${value >= 0 ? '+' : '-'}$${Math.abs(value / 1e6).toFixed(2)}M`;
+const fmtPercent = (value: number, digits = 1) => `${value.toFixed(digits)}%`;
 
-// ─── Brand Colors (GPIC Official) ───────────────────────────────────────────
-const GPIC_GREEN = '#006341';
-const GPIC_NAVY  = '#001A71';
-const GPIC_RED   = '#E70033';
+function useSystemTheme() {
+  const [isDark, setIsDark] = useState(
+    () =>
+      typeof window !== 'undefined'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : false,
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => setIsDark(event.matches);
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
+
+  return isDark;
+}
+
+function findZeroCrossing(points: Array<{ x: number; y: number }>) {
+  let previous: { x: number; y: number } | null = null;
+
+  for (const point of points) {
+    if (previous && ((previous.y >= 0 && point.y <= 0) || (previous.y <= 0 && point.y >= 0))) {
+      const delta = point.y - previous.y;
+      if (delta === 0) {
+        return point.x;
+      }
+      return previous.x + ((0 - previous.y) * (point.x - previous.x)) / delta;
+    }
+    previous = point;
+  }
+
+  return null;
+}
+
+function getScenarioTone(result: LPResult): Tone {
+  if (result.profit < 0) return 'rose';
+  if (result.caseType.startsWith('A')) return 'green';
+  return 'amber';
+}
+
+function getScenarioLabel(result: LPResult) {
+  if (result.profit < 0) return 'Operating below contribution breakeven';
+  if (result.caseType.startsWith('A')) return 'Methanol running at or above minimum load';
+  return 'Methanol shutdown selected';
+}
 
 export default function App() {
-  const [ammP, setAmmP]       = useState(325);
-  const [methP, setMethP]     = useState(80);
-  const [ureaP, setUreaP]     = useState(400);
-  const [gasP, setGasP]       = useState(4.5);
-  const [maxAmm, setMaxAmm]   = useState(1320);
+  const [ammP, setAmmP] = useState(325);
+  const [methP, setMethP] = useState(80);
+  const [ureaP, setUreaP] = useState(400);
+  const [gasP, setGasP] = useState(4.5);
+  const [maxAmm, setMaxAmm] = useState(1320);
   const [maxMeth, setMaxMeth] = useState(1250);
   const [maxUrea, setMaxUrea] = useState(2150);
-  const [maxGas, setMaxGas]   = useState(128);
+  const [maxGas, setMaxGas] = useState(128);
   const [monthIdx, setMonthIdx] = useState(4);
-  const [tab, setTab]         = useState('optimizer');
+  const [tab, setTab] = useState<TabId>('optimizer');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCompact, setSidebarCompact] = useState(false);
-  const [gtRunning, setGtRunning]     = useState(true);
-  const [controlsOpen, setControlsOpen] = useState(true);
-  const [capacityOpen, setCapacityOpen] = useState(true);
-  const [opsOpen, setOpsOpen] = useState(true);
+  const [gtRunning, setGtRunning] = useState(true);
+  const [settings, setSettings] = useState<Settings>({ ...BASE_DEFAULTS });
 
-  // ── System preference dark mode (no manual toggle needed) ──
   const isDark = useSystemTheme();
-
-  const [settings, setSettings] = useState<Settings>({ ...BASE_DEFAULTS } as Settings);
-
-  const resetSettings = useCallback(() => {
-    setSettings({ ...BASE_DEFAULTS } as Settings);
-  }, []);
-
-  const updateSetting = useCallback((key: keyof Settings, value: number) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  }, []);
-
   const days = MONTH_DAYS[monthIdx];
 
-  // ─── Core LP Result ───
-  const result = useLPSolver(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning);
+  const result = useLPSolver(
+    ammP,
+    methP,
+    ureaP,
+    gasP,
+    maxAmm,
+    maxMeth,
+    maxUrea,
+    maxGas,
+    days,
+    settings,
+    gtRunning,
+  );
 
-  // ─── Shutdown Analysis ───
   const shutdownData = useMemo(() => {
     const vc = calcVC(gasP, settings, gtRunning);
-    const K1 = days;
-    const R4 = K1 * maxAmm;
-    const T4 = K1 * maxUrea;
+    const ammoniaCap = days * maxAmm;
+    const ureaCap = days * maxUrea;
+    const ammoniaTotal = ammoniaCap - settings.ammCapLoss_B;
+    const ureaPotential = Math.min(ureaCap, settings.C33_coeff * ammoniaTotal);
+    const ammoniaSaleable = ammoniaTotal - settings.K7 * ureaPotential;
+    const shutdownProfit =
+      (ammP - vc.amm_B) * ammoniaSaleable + (ureaP - vc.urea_B) * ureaPotential - settings.FC_total;
 
-    const K10_shut = R4 - settings.ammCapLoss_B;
-    const C33_shut = settings.C33_coeff * K10_shut;
-    const K9_shut  = Math.min(T4, C33_shut);
-    const K8_shut  = settings.K7 * K9_shut;
-    const K11_shut = K10_shut - K8_shut;
-    const shutdownProfit = (ammP - vc.amm_B) * K11_shut + (ureaP - vc.urea_B) * K9_shut - settings.FC_total;
+    const runningScenario = solveLP(
+      ammP,
+      methP,
+      ureaP,
+      gasP,
+      maxAmm,
+      maxMeth,
+      maxUrea,
+      maxGas,
+      days,
+      settings,
+      'A',
+      gtRunning,
+    );
 
-    const data = [];
-    let crossover = null as number | null;
-    let prevDiff  = null as number | null;
+    let crossover: number | null = null;
+    let previousDiff: number | null = null;
+    const data: Array<{ methPrice: number; runningProfit: number; shutdownProfit: number }> = [];
 
-    for (let mp = 0; mp <= 350; mp += 5) {
-      const r = solveLP(ammP, mp, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, 'A', gtRunning);
-      const diff = r.profit - shutdownProfit;
-      if (prevDiff !== null && prevDiff <= 0 && diff > 0 && crossover === null) {
-        crossover = (mp - 5) + 5 * (-prevDiff) / (diff - prevDiff);
+    for (let methPrice = 0; methPrice <= 350; methPrice += 5) {
+      const running = solveLP(
+        ammP,
+        methPrice,
+        ureaP,
+        gasP,
+        maxAmm,
+        maxMeth,
+        maxUrea,
+        maxGas,
+        days,
+        settings,
+        'A',
+        gtRunning,
+      );
+
+      const diff = running.profit - shutdownProfit;
+      if (previousDiff !== null && previousDiff <= 0 && diff > 0 && crossover === null) {
+        crossover = methPrice - 5 + (5 * -previousDiff) / (diff - previousDiff);
       }
-      prevDiff = diff;
-      data.push({ methPrice: mp, runningProfit: r.profit / 1e6, shutdownProfit: shutdownProfit / 1e6 });
-    }
-    return { data, crossover, vcMeth: vc.meth, shutdownProfitVal: shutdownProfit };
-  }, [ammP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
+      previousDiff = diff;
 
-  // ─── Gas Sensitivity ───
-  const gasSens = useMemo(() => {
-    const data = [];
-    for (let g = 0.5; g <= 10; g += 0.5) {
-      const r = solveLP(ammP, methP, ureaP, g, maxAmm, maxMeth, maxUrea, maxGas, days, settings, undefined, gtRunning);
-      data.push({ gasPrice: g, profit: r.profit / 1e6 });
+      data.push({
+        methPrice,
+        runningProfit: running.profit / 1e6,
+        shutdownProfit: shutdownProfit / 1e6,
+      });
     }
-    return data;
-  }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
-  const chartTheme = isDark ? {
-    grid: '#243449', text: '#9eb0c7',
-    tooltipBg: '#0f1a2a', tooltipBorder: '#334155', tooltipColor: '#f8fafc',
-    barCap: '#43566f',
-  } : {
-    grid: '#dde5ef', text: '#586b84',
-    tooltipBg: '#ffffff', tooltipBorder: '#cfdae7', tooltipColor: '#0f172a',
-    barCap: '#b7c7d9',
-  };
+    return {
+      crossover,
+      currentGap: runningScenario.profit - shutdownProfit,
+      shutdownProfit,
+      vcMeth: vc.meth,
+      data,
+    };
+  }, [
+    ammP,
+    days,
+    gasP,
+    gtRunning,
+    maxAmm,
+    maxGas,
+    maxMeth,
+    maxUrea,
+    methP,
+    settings,
+    ureaP,
+  ]);
+
+  const gasSensitivity = useMemo(
+    () =>
+      Array.from({ length: 20 }, (_, index) => 0.5 + index * 0.5).map((price) => ({
+        gasPrice: price,
+        profit:
+          solveLP(
+            ammP,
+            methP,
+            ureaP,
+            price,
+            maxAmm,
+            maxMeth,
+            maxUrea,
+            maxGas,
+            days,
+            settings,
+            undefined,
+            gtRunning,
+          ).profit / 1e6,
+      })),
+    [
+      ammP,
+      days,
+      gtRunning,
+      maxAmm,
+      maxGas,
+      maxMeth,
+      maxUrea,
+      methP,
+      settings,
+      ureaP,
+    ],
+  );
+
+  const chartTheme = isDark
+    ? {
+        grid: 'rgba(139, 161, 190, 0.18)',
+        axis: '#9bb0c9',
+        tooltipBg: 'rgba(10, 17, 30, 0.98)',
+        tooltipBorder: 'rgba(100, 128, 161, 0.32)',
+        tooltipText: '#f5f9ff',
+        mutedBar: '#425069',
+      }
+    : {
+        grid: 'rgba(120, 144, 169, 0.22)',
+        axis: '#6a7d95',
+        tooltipBg: 'rgba(255, 255, 255, 0.98)',
+        tooltipBorder: 'rgba(111, 136, 163, 0.28)',
+        tooltipText: '#13233f',
+        mutedBar: '#bdcad8',
+      };
+
+  const scenarioTone = getScenarioTone(result);
+  const scenarioLabel = getScenarioLabel(result);
+  const activeTab = TAB_ITEMS.find((item) => item.id === tab) ?? TAB_ITEMS[0];
+  const gasHeadroom = maxGas - result.gas;
+  const breakEvenGas = findZeroCrossing(gasSensitivity.map((item) => ({ x: item.gasPrice, y: item.profit })));
+  const currentMethanolGap = shutdownData.crossover == null ? null : methP - shutdownData.crossover;
+
+  const productRows = [
+    {
+      key: 'ammonia',
+      label: 'Ammonia',
+      tone: 'amber' as Tone,
+      daily: result.dailyAmm,
+      monthly: result.K11,
+      monthlyLabel: 'saleable this month',
+      capacity: maxAmm,
+      price: ammP,
+      variableCost: result.vcAmm,
+    },
+    {
+      key: 'methanol',
+      label: 'Methanol',
+      tone: 'purple' as Tone,
+      daily: result.dailyMeth,
+      monthly: result.D5,
+      monthlyLabel: 'total this month',
+      capacity: maxMeth,
+      price: methP,
+      variableCost: result.vcMeth,
+    },
+    {
+      key: 'urea',
+      label: 'Urea',
+      tone: 'green' as Tone,
+      daily: result.dailyUrea,
+      monthly: result.K9,
+      monthlyLabel: 'saleable this month',
+      capacity: maxUrea,
+      price: ureaP,
+      variableCost: result.vcUrea,
+    },
+  ];
+
+  const capacityData = productRows.map((row) => ({
+    ...row,
+    utilization: row.capacity > 0 ? (row.daily / row.capacity) * 100 : 0,
+  }));
+
+  const bottleneck = [...capacityData].sort((left, right) => right.utilization - left.utilization)[0];
+  const contributionRows = [
+    { label: 'Ammonia', tone: 'amber' as Tone, value: (ammP - result.vcAmm) * result.K11 },
+    { label: 'Methanol', tone: 'purple' as Tone, value: (methP - result.vcMeth) * result.D5 },
+    { label: 'Urea', tone: 'green' as Tone, value: (ureaP - result.vcUrea) * result.K9 },
+  ];
+  const largestContribution = Math.max(
+    ...contributionRows.map((row) => Math.abs(row.value)),
+    Math.abs(settings.FC_total),
+    1,
+  );
+
+  const gasMix = [
+    { name: 'Ammonia', value: result.gasBreakdown.ammonia_nm3 },
+    { name: 'Methanol', value: result.gasBreakdown.methanol_nm3 },
+    { name: 'Boilers', value: result.gasBreakdown.boiler_nm3 },
+    { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3 },
+    { name: 'Flare', value: result.gasBreakdown.flare_nm3 },
+  ]
+    .filter((item) => item.value > 0)
+    .map((item) => ({
+      ...item,
+      pct: result.gasTotal_nm3 > 0 ? (item.value / result.gasTotal_nm3) * 100 : 0,
+    }))
+    .sort((left, right) => right.value - left.value);
+
+  const executiveSignals = [
+    {
+      label: 'Gas headroom',
+      value: `${gasHeadroom >= 0 ? '+' : ''}${fmt(gasHeadroom, 2)} MMSCFD`,
+      note: gasHeadroom >= 3 ? 'Comfortable room under the gas limit.' : 'Constraint is tightening.',
+      tone: gasHeadroom >= 3 ? ('green' as Tone) : ('rose' as Tone),
+    },
+    {
+      label: 'Tightest asset',
+      value: `${bottleneck.label} at ${fmtPercent(bottleneck.utilization, 1)}`,
+      note: 'Highest daily utilization under the current market deck.',
+      tone: bottleneck.utilization > 90 ? ('amber' as Tone) : ('blue' as Tone),
+    },
+    {
+      label: 'Methanol decision',
+      value:
+        currentMethanolGap == null
+          ? 'No crossover available'
+          : `${currentMethanolGap >= 0 ? '+' : ''}$${fmt(currentMethanolGap, 1)}/MT vs crossover`,
+      note:
+        currentMethanolGap == null
+          ? 'Running and shutdown do not cross in the scanned range.'
+          : currentMethanolGap >= 0
+            ? 'Current methanol pricing supports running economics.'
+            : 'Shutdown economics are stronger than running methanol.',
+      tone:
+        currentMethanolGap == null
+          ? ('slate' as Tone)
+          : currentMethanolGap >= 0
+            ? ('green' as Tone)
+            : ('amber' as Tone),
+    },
+  ];
+
+  const costCards = [
+    {
+      title: 'Ammonia variable cost',
+      tone: 'amber' as Tone,
+      total: result.vcAmmBreakdown.total,
+      rows: [
+        { label: 'Gas', value: result.vcAmmBreakdown.gasVC },
+        { label: 'Power', value: result.vcAmmBreakdown.powerVC },
+        { label: 'HP Steam', value: result.vcAmmBreakdown.hpSteamVC },
+        { label: 'Sea Water', value: result.vcAmmBreakdown.swVC },
+        { label: 'FCW', value: result.vcAmmBreakdown.fcwVC },
+        { label: 'Demin', value: result.vcAmmBreakdown.deminVC },
+      ],
+    },
+    {
+      title: 'Methanol variable cost',
+      tone: 'purple' as Tone,
+      total: result.vcMethBreakdown.total,
+      rows: [
+        { label: 'Gas', value: result.vcMethBreakdown.gasVC },
+        { label: 'Power', value: result.vcMethBreakdown.powerVC },
+        { label: 'HP Steam', value: result.vcMethBreakdown.hpSteamVC },
+        { label: 'Sea Water', value: result.vcMethBreakdown.swVC },
+        { label: 'FCW', value: result.vcMethBreakdown.fcwVC },
+        { label: 'Demin', value: result.vcMethBreakdown.deminVC },
+      ],
+    },
+    {
+      title: 'Urea variable cost',
+      tone: 'green' as Tone,
+      total: result.vcUreaBreakdown.total,
+      rows: [
+        { label: 'NH3 cost', value: result.vcUreaBreakdown.ammCostComponent },
+        { label: 'Power', value: result.vcUreaBreakdown.powerVC },
+        {
+          label: 'CDR total',
+          value:
+            result.vcUreaBreakdown.cdrSW +
+            result.vcUreaBreakdown.cdrFCW +
+            result.vcUreaBreakdown.cdrPower +
+            result.vcUreaBreakdown.cdrLPSteam,
+        },
+        { label: 'HP Steam', value: result.vcUreaBreakdown.hpSteamVC },
+        { label: 'MP Steam', value: result.vcUreaBreakdown.mpSteamVC },
+        {
+          label: 'Water and Demin',
+          value:
+            result.vcUreaBreakdown.swVC +
+            result.vcUreaBreakdown.fcwVC +
+            result.vcUreaBreakdown.deminVC,
+        },
+        {
+          label: 'UF85 total',
+          value:
+            result.vcUreaBreakdown.uf85VC +
+            result.vcUreaBreakdown.uf85FCW +
+            result.vcUreaBreakdown.uf85Power,
+        },
+      ],
+    },
+  ];
+
+  const currentGasPoint = gasSensitivity.find((item) => item.gasPrice === gasP) ?? gasSensitivity[0];
+  const terminalGasPoint = gasSensitivity[gasSensitivity.length - 1];
+
+  const resetSettings = () => setSettings({ ...BASE_DEFAULTS });
+  const updateSetting = (key: keyof Settings, value: number) =>
+    setSettings((previous) => ({ ...previous, [key]: value }));
 
   return (
-    <div className="min-h-screen font-sans selection:bg-emerald-600/25 bg-[var(--surface)] text-[var(--text-primary)] transition-colors duration-300">
-
-      {/* Mobile backdrop */}
+    <div className="min-h-screen bg-[var(--app-bg)] text-[var(--text-primary)] selection:bg-emerald-500/20">
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20 md:hidden"
+        <button
+          type="button"
+          className="fixed inset-0 z-30 bg-slate-950/45 md:hidden"
           onClick={() => setSidebarOpen(false)}
+          aria-label="Close control panel backdrop"
         />
       )}
-
-      {/* ── Sidebar ── */}
-      <aside className={cn(
-        "fixed left-0 top-0 h-full bg-[var(--surface-elevated)] border-r border-[var(--border-subtle)] p-4 md:p-5 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
-        sidebarCompact ? "w-[18rem]" : "w-[20.5rem]",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-      )}>
-
-        {/* GPIC brand stripe — red at ~25% width per brand guidelines */}
-        <div className="flex -mx-6 -mt-6 mb-6">
-          <div className="w-1/4 h-1" style={{ backgroundColor: GPIC_NAVY }} />
-          <div className="w-1/4 h-1" style={{ backgroundColor: GPIC_RED }} />
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-40 flex w-[21rem] max-w-[calc(100vw-1.5rem)] flex-col border-r border-[var(--border-soft)] bg-[var(--surface-strong)] px-5 py-5 shadow-[var(--shadow-xl)] backdrop-blur-xl transition-transform duration-300',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+        )}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <img src={gpicLogo} alt="GPIC" className="w-24 object-contain" />
+            <p className="mt-4 text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-[var(--text-muted)]">
+              Management Optimizer
+            </p>
+            <h1 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">GPIC Dashboard</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+              Live market controls with the production solver preserved under the hood.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-2xl border border-[var(--border-soft)] bg-white/60 p-2 text-[var(--text-muted)] transition hover:text-[var(--text-primary)] md:hidden dark:bg-slate-900/50"
+            aria-label="Close controls"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
-
-        {/* Logo / Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <img src={gpicLogo} alt="GPIC" className="w-28 object-contain p-1 dark:brightness-90" />
-              <h1 className="text-[11px] font-semibold tracking-[0.16em] text-center truncate" style={{ color: GPIC_NAVY }}>
-                Complex Optimizer
-              </h1>
+        <div className="mt-6 rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                Active scenario
+              </p>
+              <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{MONTHS[monthIdx]}</p>
             </div>
+            <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
           </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setSidebarCompact((prev) => !prev)}
-              className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Toggle sidebar width"
-            >
-              {sidebarCompact ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-            </button>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Close sidebar"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <MiniAsideStat label="Monthly profit" value={fmtM(result.profit)} tone={scenarioTone} />
+            <MiniAsideStat
+              label="Gas load"
+              value={`${fmt(result.gas, 2)} MMSCFD`}
+              tone={gasHeadroom >= 3 ? 'green' : 'rose'}
+            />
           </div>
         </div>
-
-        <div className="space-y-5">
-          <section className="gpic-card p-4">
-            <CollapsibleHeader
-              label="Market Controls"
-              icon={<Settings2 className="w-4 h-4" />}
-              isOpen={controlsOpen}
-              onToggle={() => setControlsOpen((prev) => !prev)}
-            />
-
-            {controlsOpen && <div className="space-y-5 mt-4">
-              <ControlSlider label="Ammonia Price"  value={ammP}   onChange={setAmmP}   min={200} max={900} unit="$/MT" />
-              <ControlSlider label="Methanol Price" value={methP}  onChange={setMethP}  min={0}   max={900} unit="$/MT" />
-              <ControlSlider label="Urea Price"     value={ureaP}  onChange={setUreaP}  min={200} max={900} unit="$/MT" />
-              <ControlSlider label="Natural Gas"    value={gasP}   onChange={setGasP}   min={0.5} max={10}  step={0.25} unit="$/MMBTU" />
-              <ControlSlider label="Max Gas Limit"  value={maxGas} onChange={setMaxGas} min={80}  max={150} unit="MMSCFD" />
-
-              {/* GT Toggle */}
-              <div className="flex items-center justify-between pt-1">
-                <div className="space-y-0.5">
-                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    Gas Turbine (GT)
-                  </label>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                    {gtRunning ? 'GT on — power split + gas load active' : 'GT off — 100% MEW import power'}
+        <div className="mt-6 flex-1 space-y-4 overflow-y-auto pr-1">
+          <SidebarSection eyebrow="Pricing deck" title="Market controls" tone="green" icon={<Settings2 className="h-4 w-4" />}>
+                    <ControlSlider label="Ammonia price" value={ammP} onChange={setAmmP} min={200} max={900} unit="$/MT" fmt={fmt} />
+                    <ControlSlider label="Methanol price" value={methP} onChange={setMethP} min={0} max={900} unit="$/MT" fmt={fmt} />
+                    <ControlSlider label="Urea price" value={ureaP} onChange={setUreaP} min={200} max={900} unit="$/MT" fmt={fmt} />
+                    <ControlSlider label="Natural gas" value={gasP} onChange={setGasP} min={0.5} max={10} step={0.25} decimals={2} unit="$/MMBTU" fmt={fmt} />
+                    <ControlSlider label="Gas limit" value={maxGas} onChange={setMaxGas} min={80} max={150} decimals={1} unit="MMSCFD" fmt={fmt} />
+            <div className="rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Gas turbine</p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                    {gtRunning
+                      ? 'GT online. Imported power and gas split are active.'
+                      : 'GT offline. Model switches to imported power only.'}
                   </p>
                 </div>
                 <button
-                  onClick={() => setGtRunning(prev => !prev)}
+                  type="button"
+                  onClick={() => setGtRunning((previous) => !previous)}
                   className={cn(
-                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
-                    gtRunning ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"
+                    'relative inline-flex h-7 w-12 shrink-0 rounded-full border border-transparent transition',
+                    gtRunning ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700',
                   )}
+                  aria-label="Toggle gas turbine"
                 >
-                  <span className={cn(
-                    "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg transform transition-transform duration-200",
-                    gtRunning ? "translate-x-5" : "translate-x-0"
-                  )} />
+                  <span className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition', gtRunning ? 'left-[1.45rem]' : 'left-0.5')} />
                 </button>
               </div>
-
-              {/* Plant Capacities */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                <button onClick={() => setCapacityOpen((prev) => !prev)} className="w-full flex items-center justify-between mb-3 text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-2">
-                    <Gauge className="w-4 h-4" />
-                    <h2 className="text-[11px] font-semibold uppercase tracking-wider">Plant Capacities</h2>
-                  </span>
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", capacityOpen ? "rotate-180" : "")} />
-                </button>
-                {capacityOpen && <div className="space-y-6">
-                  <ControlSlider label="Max Ammonia" value={maxAmm}  onChange={setMaxAmm}  min={1000} max={1500} unit="MT/D" />
-                  <ControlSlider label="Max Methanol" value={maxMeth} onChange={setMaxMeth} min={800}  max={1500} unit="MT/D" />
-                  <ControlSlider label="Max Urea"     value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" />
-                </div>}
-              </div>
-
-              {/* Month Selector */}
-              <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
-                <button onClick={() => setOpsOpen((prev) => !prev)} className="w-full flex items-center justify-between text-slate-500 dark:text-slate-400">
-                  <label className="text-[11px] font-medium">Operating Month</label>
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", opsOpen ? "rotate-180" : "")} />
-                </button>
-                {opsOpen && <select
-                  value={monthIdx}
-                  onChange={(e) => setMonthIdx(parseInt(e.target.value))}
-                  className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-colors"
-                  aria-label="Operating month"
-                >
-                  {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                </select>}
-              </div>
-            </div>}
-          </section>
-
-          <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
-            <div className="flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-  Model v32: Component-level VC — Gas, Power (GT/Import), HP/MP/LP Steam, SW, FCW, Demin, CDR, UF85.
-  Minimum methanol load is user-defined; alpha remains fixed and is not normalized to that minimum.
-</p>
+            </div>
+          </SidebarSection>
+          <SidebarSection eyebrow="Operating envelope" title="Capacity and month" tone="blue" icon={<Gauge className="h-4 w-4" />}>
+                    <ControlSlider label="Max ammonia" value={maxAmm} onChange={setMaxAmm} min={1000} max={1500} unit="MT/D" fmt={fmt} />
+                    <ControlSlider label="Max methanol" value={maxMeth} onChange={setMaxMeth} min={800} max={1500} unit="MT/D" fmt={fmt} />
+                    <ControlSlider label="Max urea" value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" fmt={fmt} />
+            <div className="rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-3">
+              <label className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Operating month</label>
+              <select
+                value={monthIdx}
+                onChange={(event) => setMonthIdx(Number(event.target.value))}
+                className="mt-3 w-full rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-strong)] px-3 py-2.5 text-sm font-medium text-[var(--text-primary)] outline-none transition focus:border-emerald-500/40 focus:ring-2 focus:ring-emerald-500/20"
+                aria-label="Operating month"
+              >
+                {MONTHS.map((month, index) => (
+                  <option key={month} value={index}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{days} operating days are used for the selected month.</p>
+            </div>
+          </SidebarSection>
+        </div>
+        <div className="mt-4 rounded-[26px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
+          <div className="flex items-start gap-3">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
+            <div>
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Model note</p>
+              <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                Model v32 with the original LP business logic preserved. This redesign only changes the presentation layer and chart framing.
+              </p>
             </div>
           </div>
         </div>
       </aside>
-
-      {/* ── Main Content ── */}
-      <main className={cn("min-h-screen transition-all duration-300", sidebarCompact ? "md:pl-[18rem]" : "md:pl-[20.5rem]")}>
-
-        {/* Header */}
-        <header className="no-print h-14 border-b border-[var(--border-subtle)] flex items-center justify-between px-4 md:px-6 bg-[var(--surface-elevated)]/90 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
-          <div className="flex items-center gap-3 md:gap-4">
-            {/* Hamburger — mobile only */}
-            <button
-              onClick={() => setSidebarOpen(prev => !prev)}
-              className="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            {/* Tab nav — scrollable on mobile */}
-            <nav className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[60vw] md:max-w-none">
-              <TabButton active={tab === 'optimizer'}   onClick={() => { setTab('optimizer');   setSidebarOpen(false); }} label="Optimizer"      icon={<Zap       className="w-3.5 h-3.5" />} />
-              <TabButton active={tab === 'shutdown'}    onClick={() => { setTab('shutdown');    setSidebarOpen(false); }} label="MeOH Shutdown" icon={<Activity   className="w-3.5 h-3.5" />} />
-              <TabButton active={tab === 'sensitivity'} onClick={() => { setTab('sensitivity'); setSidebarOpen(false); }} label="Gas Sensitivity" icon={<TrendingUp className="w-3.5 h-3.5" />} />
-              <TabButton active={tab === 'settings'}    onClick={() => { setTab('settings');    setSidebarOpen(false); }} label="Settings"        icon={<Settings2  className="w-3.5 h-3.5" />} />
-            </nav>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Print / Export */}
-            <button
-              onClick={() => window.print()}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              Export
-            </button>
-
-          </div>
-        </header>
-
-        {/* ── Status Banner ── */}
-        <StatusBanner result={result} />
-
-        {/* ── Page Content ── */}
-        <div className="p-4 md:p-8 space-y-6 md:space-y-8 max-w-[1700px]">
-
-          {/* ════════════════ OPTIMIZER TAB ════════════════ */}
+      <main className="min-h-screen md:pl-[21rem]">
+        <div className="mx-auto max-w-[1680px] px-4 pb-12 pt-4 md:px-6 md:pt-6 xl:px-8">
+          <header className="no-print sticky top-3 z-20 mb-6 rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)]/92 shadow-[var(--shadow-lg)] backdrop-blur-xl">
+            <div className="flex flex-col gap-4 p-4 md:p-5 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(true)}
+                  className="rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-panel)] p-2 text-[var(--text-muted)] transition hover:text-[var(--text-primary)] md:hidden"
+                  aria-label="Open controls"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <div className="min-w-0">
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-[var(--text-muted)]">GPIC executive dashboard</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{activeTab.label}</h2>
+                    <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
+                    <StatusChip tone="slate">{MONTHS[monthIdx]} planning window</StatusChip>
+                  </div>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">{activeTab.description}</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 xl:items-end">
+                <nav className="flex max-w-full gap-2 overflow-x-auto rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-1.5 scrollbar-hide">
+                  {TAB_ITEMS.map((item) => (
+                    <TabButton
+                      active={tab === item.id}
+                      label={item.label}
+                      onClick={() => {
+                        setTab(item.id);
+                        setSidebarOpen(false);
+                      }}
+                      icon={<item.icon className="h-3.5 w-3.5" />}
+                    />
+                  ))}
+                </nav>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[var(--border-soft)] bg-[var(--surface-panel)] px-3.5 py-2 text-sm font-semibold text-[var(--text-secondary)] transition hover:text-[var(--text-primary)]"
+                >
+                  <Printer className="h-4 w-4" />
+                  Export
+                </button>
+              </div>
+            </div>
+          </header>
           {tab === 'optimizer' && (
-            <>
-              {/* KPI — Hero profit + 4 product cards */}
-              <ProfitHero result={result} monthName={MONTHS[monthIdx]} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
-                <KPICard title="Ammonia"  value={`${fmt(result.dailyAmm,  1)} MT/D`} sub={`${fmt(result.K11, 0)} MT saleable`} color="amber"  />
-                <KPICard title="Methanol" value={`${fmt(result.dailyMeth, 1)} MT/D`} sub={`${fmt(result.D5,  0)} MT total`}    color="purple" />
-                <KPICard title="Urea"     value={`${fmt(result.dailyUrea, 1)} MT/D`} sub={`${fmt(result.K9,  0)} MT saleable`} color="green"  />
-                <KPICard title="Gas Consumption" value={`${fmtSmart(result.gas)} MMSCFD`} sub={`${((result.gas / maxGas) * 100).toFixed(1)}% of ${maxGas} MMSCFD limit`} color="rose" />
+            <div className="space-y-5 md:space-y-6">
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                <ExecutiveHero
+                  result={result}
+                  month={MONTHS[monthIdx]}
+                  days={days}
+                  scenarioTone={scenarioTone}
+                  scenarioLabel={scenarioLabel}
+                  signals={executiveSignals}
+                  fmt={fmt}
+                  fmtM={fmtM}
+                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {productRows.map((row) => (
+                    <React.Fragment key={row.key}>
+                      <MetricRailCard
+                        title={row.label}
+                        tone={row.tone}
+                        value={`${fmt(row.daily, 1)} MT/D`}
+                        subtitle={`${fmt(row.monthly, 0)} ${row.monthlyLabel}`}
+                        helper={`${fmtPercent((row.daily / row.capacity) * 100, 1)} of ${fmt(row.capacity, 0)} MT/D`}
+                      />
+                    </React.Fragment>
+                  ))}
+                  <MetricRailCard
+                    title="Gas load"
+                    tone={gasHeadroom >= 3 ? 'green' : 'rose'}
+                    value={`${fmt(result.gas, 2)} MMSCFD`}
+                    subtitle={`${fmtPercent((result.gas / maxGas) * 100, 1)} of the current gas limit`}
+                    helper={`${fmt(gasHeadroom, 2)} MMSCFD headroom remaining`}
+                  />
+                </div>
               </div>
 
-              {/* Production vs Capacity + Profit Contribution */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
-                <Card title="Production vs Capacity">
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={[
-                          { name: 'Ammonia',  prod: result.dailyAmm,  cap: maxAmm  },
-                          { name: 'Methanol', prod: result.dailyMeth, cap: maxMeth },
-                          { name: 'Urea',     prod: result.dailyUrea, cap: maxUrea },
-                        ]}
-                        layout="vertical"
-                        margin={{ left: 20, right: 30 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} horizontal={false} />
-                        <XAxis type="number" stroke={chartTheme.text} fontSize={10} />
-                        <YAxis dataKey="name" type="category" stroke={chartTheme.text} fontSize={10} width={70} />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor }}
-                          itemStyle={{ color: chartTheme.tooltipColor }}
-                        />
-                        <Legend wrapperStyle={{ fontSize: '10px', color: chartTheme.text }} />
-                        <Bar dataKey="prod" fill={GPIC_GREEN}      name="Production" radius={[0,2,2,0]} />
-                        <Bar dataKey="cap"  fill={chartTheme.barCap} name="Capacity"   radius={[0,2,2,0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </Card>
-
-                <Card title="Profit Contribution">
-                  <div className="space-y-4">
-                    {(() => {
-                      const ammContrib  = (ammP  - result.vcAmm)  * result.K11;
-                      const methContrib = (methP - result.vcMeth) * result.D5;
-                      const ureaContrib = (ureaP - result.vcUrea) * result.K9;
-                      const total = Math.abs(ammContrib) + Math.abs(methContrib) + Math.abs(ureaContrib);
-                      return (
-                        <>
-                          <BreakdownItem label="Ammonia"  value={ammContrib}  color="bg-amber-500"  max={total} />
-                          <BreakdownItem label="Methanol" value={methContrib} color="bg-purple-500" max={total} />
-                          <BreakdownItem label="Urea"     value={ureaContrib} color="bg-emerald-500" max={total} />
-                          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between text-[11px]">
-                            <span className="text-slate-500">Fixed Costs</span>
-                            <span className="font-mono font-semibold text-rose-500">{fmtM(-settings.FC_total)}</span>
-                          </div>
-                          <div className="flex justify-between text-[11px]">
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">Net Profit</span>
-                            <span className={cn(
-                              "font-mono font-bold",
-                              result.profit >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500'
-                            )}>
-                              {fmtM(result.profit)}
-                            </span>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </Card>
-              </div>
-
-              {/* Gas Consumption Breakdown */}
-              <Card title="Gas Consumption Breakdown">
-                {(() => {
-                  const GAS_COLORS: Record<string, string> = {
-                    'Ammonia': '#f59e0b',
-                    'Methanol': '#a855f7',
-                    'Boilers': '#3b82f6',
-                    'Gas Turbine': '#f97316',
-                    'Flare': '#64748b',
-                  };
-                  const gasData = [
-                    { name: 'Ammonia',     value: result.gasBreakdown.ammonia_nm3 },
-                    { name: 'Methanol',    value: result.gasBreakdown.methanol_nm3 },
-                    { name: 'Boilers',     value: result.gasBreakdown.boiler_nm3 },
-                    { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3 },
-                    { name: 'Flare',       value: result.gasBreakdown.flare_nm3 },
-                  ].filter(d => d.value > 0)
-                   .map(d => ({ ...d, pct: result.gasTotal_nm3 > 0 ? (d.value / result.gasTotal_nm3) * 100 : 0 }))
-                   .sort((a, b) => b.value - a.value);
-
-                  return (
-                    <div className="flex flex-col lg:flex-row gap-6 items-start">
-                      {/* Donut pie — left */}
-                      <div className="w-full lg:w-56 h-56 flex-shrink-0">
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,0.82fr)]">
+                <SurfaceCard
+                  eyebrow="Daily production"
+                  title="Production profile"
+                  subtitle="Daily output against current capacity ceilings, ordered for quick constraint reading."
+                >
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
+                    <div className="min-w-0">
+                      <div className="mb-4 flex flex-wrap gap-2">
+                        <LegendPill tone="green" label="Production" />
+                        <LegendPill tone="slate" label="Capacity" />
+                      </div>
+                      <div className="h-[320px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={gasData}
-                              cx="50%" cy="50%"
-                              innerRadius={60} outerRadius={95}
-                              paddingAngle={2}
-                              dataKey="value"
-                            >
-                              {gasData.map((entry) => (
-                                <Cell key={entry.name} fill={GAS_COLORS[entry.name] || '#94a3b8'} />
-                              ))}
-                            </Pie>
+                          <BarChart
+                            data={capacityData.map((row) => ({ name: row.label, production: row.daily, capacity: row.capacity }))}
+                            layout="vertical"
+                            margin={{ top: 8, right: 14, left: 6, bottom: 8 }}
+                            barCategoryGap={16}
+                          >
+                            <CartesianGrid stroke={chartTheme.grid} horizontal={false} strokeDasharray="4 4" />
+                            <XAxis type="number" stroke={chartTheme.axis} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={10} />
+                            <YAxis dataKey="name" type="category" stroke={chartTheme.axis} tick={{ fontSize: 12, fill: chartTheme.axis }} tickLine={false} axisLine={false} width={90} />
                             <Tooltip
-                              contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor, fontSize: '12px' }}
-                              formatter={(value: number, name: string) => [
-                                `${(value / 1e6).toFixed(2)}M Nm³  (${result.gasTotal_nm3 > 0 ? ((value / result.gasTotal_nm3) * 100).toFixed(1) : 0}%)`,
-                                name
-                              ]}
+                              cursor={{ fill: 'transparent' }}
+                              contentStyle={{
+                                backgroundColor: chartTheme.tooltipBg,
+                                border: `1px solid ${chartTheme.tooltipBorder}`,
+                                borderRadius: 18,
+                                color: chartTheme.tooltipText,
+                              }}
                             />
-                          </PieChart>
+                            <Bar dataKey="capacity" fill={chartTheme.mutedBar} radius={[0, 8, 8, 0]} />
+                            <Bar dataKey="production" fill="#006341" radius={[0, 8, 8, 0]} />
+                          </BarChart>
                         </ResponsiveContainer>
                       </div>
-
-                      {/* Horizontal bar breakdown — right, industry standard */}
-                      <div className="flex-1 w-full space-y-3">
-                        {gasData.map((item) => (
-                          <div key={item.name}>
-                            <div className="flex items-center justify-between mb-1">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: GAS_COLORS[item.name] || '#94a3b8' }} />
-                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{item.name}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">
-                                  {(item.value / 1e6).toFixed(2)}M Nm³
-                                </span>
-                                <span className="text-[11px] font-medium font-mono text-slate-400 w-10 text-right">
-                                  {item.pct.toFixed(1)}%
-                                </span>
-                              </div>
+                    </div>
+                    <div className="space-y-3">
+                      {capacityData.map((row) => (
+                        <div key={row.key} className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-[var(--text-primary)]">{row.label}</p>
+                              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                                {fmt(row.daily, 1)} MT/D of {fmt(row.capacity, 0)} MT/D
+                              </p>
                             </div>
-                            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all duration-700"
-                                style={{ width: `${item.pct}%`, backgroundColor: GAS_COLORS[item.name] || '#94a3b8' }}
-                              />
-                            </div>
+                            <StatusChip tone={row.tone}>{fmtPercent(row.utilization, 1)}</StatusChip>
                           </div>
-                        ))}
-
-                        {/* Footer totals */}
-                        <div className="pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400">Total consumed</span>
-                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{result.gas.toFixed(2)} MMSCFD</span>
+                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
+                            <div className={cn('h-full rounded-full', TONE_STYLES[row.tone].bar)} style={{ width: `${Math.min(row.utilization, 100)}%` }} />
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400">Limit</span>
-                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{maxGas.toFixed(2)} MMSCFD</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-400">Headroom</span>
-                            <span className={cn("font-mono font-bold", (maxGas - result.gas) < 2 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400')}>
-                              {(maxGas - result.gas).toFixed(2)} MMSCFD
-                            </span>
-                          </div>
-                          <span className={cn(
-                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                            gtRunning
-                              ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
-                          )}>
-                            GT {gtRunning ? 'ON' : 'OFF'}
-                          </span>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                </SurfaceCard>
+
+                <SurfaceCard
+                  eyebrow="Net contribution"
+                  title="Contribution structure"
+                  subtitle="Positive product contribution, fixed-cost drag, and final net result with no visual noise."
+                >
+                  <div className="space-y-4">
+                    {contributionRows.map((row) => (
+                      <React.Fragment key={row.label}>
+                        <ContributionBar
+                          label={row.label}
+                          value={row.value}
+                          tone={row.tone}
+                          max={largestContribution}
+                          fmtM={fmtM}
+                        />
+                      </React.Fragment>
+                    ))}
+                    <ContributionBar
+                      label="Fixed costs"
+                      value={-settings.FC_total}
+                      tone="rose"
+                      max={largestContribution}
+                      fmtM={fmtM}
+                    />
+                    <div className="grid gap-3 rounded-[26px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Gross contribution</p>
+                        <p className="mt-2 font-[var(--font-numeric)] text-2xl font-semibold text-[var(--text-primary)]">
+                          {fmtM(contributionRows.reduce((sum, row) => sum + row.value, 0))}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Net monthly profit</p>
+                        <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[scenarioTone].strongText)}>
+                          {fmtM(result.profit)}
+                        </p>
                       </div>
                     </div>
-                  );
-                })()}
-              </Card>
+                  </div>
+                </SurfaceCard>
+              </div>
 
-              {/* Contribution Margin Analysis Table */}
-              <Card title="Contribution Margin Analysis">
+              <SurfaceCard
+                eyebrow="Feed and utilities"
+                title="Gas consumption architecture"
+                subtitle="The presentation separates the donut from the data list so legends, percentages, and labels never collide."
+              >
+                <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+                  <div className="relative mx-auto h-64 w-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={gasMix} dataKey="value" innerRadius={68} outerRadius={102} paddingAngle={2} startAngle={90} endAngle={-270}>
+                          {gasMix.map((item) => (
+                            <Cell key={item.name} fill={GAS_COLORS[item.name]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: chartTheme.tooltipBg,
+                            border: `1px solid ${chartTheme.tooltipBorder}`,
+                            borderRadius: 18,
+                            color: chartTheme.tooltipText,
+                          }}
+                          formatter={(value: number, name: string) => [`${fmt(value / 1e6, 2)}M Nm3`, name]}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total gas</p>
+                      <p className="mt-2 font-[var(--font-numeric)] text-3xl font-semibold text-[var(--text-primary)]">{fmt(result.gas, 2)}</p>
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">MMSCFD</p>
+                    </div>
+                  </div>
+                  <div className="min-w-0 space-y-4">
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <MetricSnapshot label="Gas limit" value={`${fmt(maxGas, 0)} MMSCFD`} note="Commercial cap" />
+                      <MetricSnapshot label="Headroom" value={`${fmt(gasHeadroom, 2)} MMSCFD`} note={gasHeadroom >= 3 ? 'Comfortable operating room' : 'Constraint is tightening'} tone={gasHeadroom >= 3 ? 'green' : 'rose'} />
+                      <MetricSnapshot label="GT status" value={gtRunning ? 'Online' : 'Offline'} note={gtRunning ? 'Split power load active' : 'All imported power'} tone={gtRunning ? 'blue' : 'slate'} />
+                    </div>
+                    <div className="space-y-3">
+                      {gasMix.map((item) => (
+                        <div key={item.name} className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: GAS_COLORS[item.name] }} />
+                              <div>
+                                <p className="text-sm font-semibold text-[var(--text-primary)]">{item.name}</p>
+                                <p className="mt-1 text-xs text-[var(--text-muted)]">{fmt(item.value / 1e6, 2)}M Nm3</p>
+                              </div>
+                            </div>
+                            <StatusChip tone="slate">{fmtPercent(item.pct, 1)}</StatusChip>
+                          </div>
+                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min(item.pct, 100)}%`, backgroundColor: GAS_COLORS[item.name] }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </SurfaceCard>
+
+              <SurfaceCard
+                eyebrow="Commercial margin"
+                title="Contribution margin table"
+                subtitle="Price, variable cost, contribution margin, and monthly volume in one management-ready table."
+              >
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[500px]">
+                  <table className="min-w-[780px] w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800">
-                        {['Product','VC ($/MT)','Price ($/MT)','Margin ($/MT)','Volume (MT)','Contribution'].map(h => (
-                          <th key={h} className={cn("py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500", h === 'Product' ? 'text-left' : 'text-right')}>{h}</th>
+                      <tr className="border-b border-[var(--border-soft)]">
+                        {['Product', 'VC ($/MT)', 'Price ($/MT)', 'Margin ($/MT)', 'Volume (MT)', 'Contribution'].map((header) => (
+                          <th key={header} className={cn('py-3 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]', header === 'Product' ? 'text-left' : 'text-right')}>
+                            {header}
+                          </th>
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      <MarginRow name="Ammonia"  vc={result.vcAmm}  price={ammP}  vol={result.K11} color="text-amber-600 dark:text-amber-500"  />
-                      <MarginRow name="Methanol" vc={result.vcMeth} price={methP} vol={result.D5}  color="text-purple-600 dark:text-purple-500" />
-                      <MarginRow name="Urea"     vc={result.vcUrea} price={ureaP} vol={result.K9}  color="text-emerald-600 dark:text-emerald-500" />
+                    <tbody className="divide-y divide-[var(--border-soft)]">
+                      {productRows.map((row) => {
+                        const margin = row.price - row.variableCost;
+                        const contribution = margin * row.monthly;
+                        return (
+                          <tr key={row.key} className="transition hover:bg-white/40 dark:hover:bg-white/5">
+                            <td className={cn('py-4 text-left text-[0.95rem] font-semibold', TONE_STYLES[row.tone].strongText)}>{row.label}</td>
+                            <td className="py-4 text-right font-[var(--font-numeric)] text-[var(--text-secondary)]">${fmt(row.variableCost, 1)}</td>
+                            <td className="py-4 text-right font-[var(--font-numeric)] text-[var(--text-secondary)]">${fmt(row.price, 1)}</td>
+                            <td className={cn('py-4 text-right font-[var(--font-numeric)] font-semibold', margin >= 0 ? TONE_STYLES.green.strongText : TONE_STYLES.rose.strongText)}>
+                              ${fmt(margin, 1)}
+                            </td>
+                            <td className="py-4 text-right font-[var(--font-numeric)] text-[var(--text-secondary)]">{fmt(row.monthly, 0)}</td>
+                            <td className="py-4 text-right font-[var(--font-numeric)] font-semibold text-[var(--text-primary)]">{fmtM(contribution)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-              </Card>
+              </SurfaceCard>
 
-              {/* Variable Cost Breakdown (3 columns) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-                <Card title="Ammonia Variable Cost">
-                  <div className="space-y-2">
-                    <VCRow label="Gas"       value={result.vcAmmBreakdown.gasVC}     total={result.vcAmmBreakdown.total} color="bg-orange-500" />
-                    <VCRow label="Power"     value={result.vcAmmBreakdown.powerVC}   total={result.vcAmmBreakdown.total} color="bg-blue-500"   />
-                    <VCRow label="HP Steam"  value={result.vcAmmBreakdown.hpSteamVC} total={result.vcAmmBreakdown.total} color="bg-cyan-500"   />
-                    <VCRow label="Sea Water" value={result.vcAmmBreakdown.swVC}      total={result.vcAmmBreakdown.total} color="bg-teal-500"   />
-                    <VCRow label="FCW"       value={result.vcAmmBreakdown.fcwVC}     total={result.vcAmmBreakdown.total} color="bg-green-500"  />
-                    <VCRow label="Demin"     value={result.vcAmmBreakdown.deminVC}   total={result.vcAmmBreakdown.total} color="bg-emerald-500" />
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between text-[11px] font-semibold">
-                      <span className="text-slate-600 dark:text-slate-300">Total</span>
-                      <span className="font-mono text-amber-600 dark:text-amber-500">${fmt(result.vcAmmBreakdown.total, 2)}/MT</span>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card title="Methanol Variable Cost">
-                  <div className="space-y-2">
-                    <VCRow label="Gas"       value={result.vcMethBreakdown.gasVC}     total={result.vcMethBreakdown.total} color="bg-orange-500" />
-                    <VCRow label="Power"     value={result.vcMethBreakdown.powerVC}   total={result.vcMethBreakdown.total} color="bg-blue-500"   />
-                    <VCRow label="HP Steam"  value={result.vcMethBreakdown.hpSteamVC} total={result.vcMethBreakdown.total} color="bg-cyan-500"   />
-                    <VCRow label="Sea Water" value={result.vcMethBreakdown.swVC}      total={result.vcMethBreakdown.total} color="bg-teal-500"   />
-                    <VCRow label="FCW"       value={result.vcMethBreakdown.fcwVC}     total={result.vcMethBreakdown.total} color="bg-green-500"  />
-                    <VCRow label="Demin"     value={result.vcMethBreakdown.deminVC}   total={result.vcMethBreakdown.total} color="bg-emerald-500" />
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between text-[11px] font-semibold">
-                      <span className="text-slate-600 dark:text-slate-300">Total</span>
-                      <span className="font-mono text-purple-600 dark:text-purple-500">${fmt(result.vcMethBreakdown.total, 2)}/MT</span>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card title="Urea Variable Cost">
-                  <div className="space-y-2">
-                    <VCRow label="NH₃ Cost"        value={result.vcUreaBreakdown.ammCostComponent}  total={result.vcUreaBreakdown.total} color="bg-amber-500"  />
-                    <VCRow label="Power"            value={result.vcUreaBreakdown.powerVC}           total={result.vcUreaBreakdown.total} color="bg-blue-500"   />
-                    <VCRow label="CDR (all)"        value={result.vcUreaBreakdown.cdrSW + result.vcUreaBreakdown.cdrFCW + result.vcUreaBreakdown.cdrPower + result.vcUreaBreakdown.cdrLPSteam} total={result.vcUreaBreakdown.total} color="bg-cyan-500" />
-                    <VCRow label="HP Steam"         value={result.vcUreaBreakdown.hpSteamVC}         total={result.vcUreaBreakdown.total} color="bg-indigo-500" />
-                    <VCRow label="MP Steam"         value={result.vcUreaBreakdown.mpSteamVC}         total={result.vcUreaBreakdown.total} color="bg-violet-500" />
-                    <VCRow label="SW + FCW + Demin" value={result.vcUreaBreakdown.swVC + result.vcUreaBreakdown.fcwVC + result.vcUreaBreakdown.deminVC} total={result.vcUreaBreakdown.total} color="bg-teal-500" />
-                    <VCRow label="UF85"             value={result.vcUreaBreakdown.uf85VC + result.vcUreaBreakdown.uf85FCW + result.vcUreaBreakdown.uf85Power} total={result.vcUreaBreakdown.total} color="bg-rose-500" />
-                    <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-between text-[11px] font-semibold">
-                      <span className="text-slate-600 dark:text-slate-300">Total</span>
-                      <span className="font-mono text-emerald-600 dark:text-emerald-500">${fmt(result.vcUreaBreakdown.total, 2)}/MT</span>
-                    </div>
-                  </div>
-                </Card>
+              <div className="grid gap-5 xl:grid-cols-3">
+                {costCards.map((card) => (
+                  <React.Fragment key={card.title}>
+                    <CostBreakdownCard title={card.title} tone={card.tone} total={card.total} rows={card.rows} fmt={fmt} />
+                  </React.Fragment>
+                ))}
               </div>
-            </>
+            </div>
           )}
 
-          {/* ════════════════ SHUTDOWN TAB ════════════════ */}
           {tab === 'shutdown' && (
-            <div className="space-y-6 md:space-y-8">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <KPICard title="Shutdown Profit"  value={fmtM(shutdownData.shutdownProfitVal)} sub="Methanol shutdown scenario"   color="amber"  />
-                <KPICard title="MeOH Crossover"   value={shutdownData.crossover != null ? `$${fmt(shutdownData.crossover, 1)}/MT` : 'N/A'} sub="Break-even methanol price" color="purple" />
-                <KPICard title="MeOH Variable Cost" value={`$${fmt(shutdownData.vcMeth, 1)}/MT`} sub="At current gas price"       color="rose"   />
+            <div className="space-y-5 md:space-y-6">
+              <div className="grid gap-4 xl:grid-cols-3">
+                <MetricRailCard title="Shutdown profit" tone="amber" value={fmtM(shutdownData.shutdownProfit)} subtitle="Methanol shutdown scenario" helper="Full shutdown economics under the current price deck" />
+                <MetricRailCard title="Crossover price" tone="purple" value={shutdownData.crossover == null ? 'No crossover' : `$${fmt(shutdownData.crossover, 1)}/MT`} subtitle="Methanol running vs shutdown" helper="Where running economics overtake shutdown economics" />
+                <MetricRailCard title="Running advantage" tone={shutdownData.currentGap >= 0 ? 'green' : 'rose'} value={fmtSignedM(shutdownData.currentGap)} subtitle="Running less shutdown at current methanol" helper="Positive means methanol should stay online" />
               </div>
 
-              <Card title="Running vs Shutdown — Profit vs Methanol Price">
-                <div className="h-72">
+              <SurfaceCard
+                eyebrow="Scenario comparison"
+                title="Running vs shutdown economics"
+                subtitle="Reference markers sit outside the chart copy so the graph stays readable at every width."
+              >
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <LegendPill tone="green" label="Methanol running" />
+                  <LegendPill tone="rose" label="Methanol shutdown" />
+                  <LegendPill tone="slate" label={`Current price $${fmt(methP, 1)}/MT`} />
+                  {shutdownData.crossover != null && <LegendPill tone="amber" label={`Crossover $${fmt(shutdownData.crossover, 1)}/MT`} />}
+                </div>
+                <div className="h-[360px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={shutdownData.data} margin={{ left: 10, right: 20, bottom: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                      <XAxis dataKey="methPrice" stroke={chartTheme.text} fontSize={10}
-                        label={{ value: 'Methanol Price ($/MT)', position: 'insideBottom', offset: -6, fontSize: 10, fill: chartTheme.text }} />
-                      <YAxis stroke={chartTheme.text} fontSize={10} tickFormatter={(v) => `$${v.toFixed(1)}M`} />
+                    <ComposedChart data={shutdownData.data} margin={{ top: 12, right: 20, left: 6, bottom: 10 }}>
+                      <CartesianGrid stroke={chartTheme.grid} strokeDasharray="4 4" />
+                      <XAxis type="number" dataKey="methPrice" domain={[0, 350]} tickCount={8} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={10} stroke={chartTheme.axis} />
+                      <YAxis tickFormatter={(value) => `$${value.toFixed(0)}M`} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={12} stroke={chartTheme.axis} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor }}
-                        formatter={(v: number) => [`$${v.toFixed(2)}M`]}
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          border: `1px solid ${chartTheme.tooltipBorder}`,
+                          borderRadius: 18,
+                          color: chartTheme.tooltipText,
+                        }}
+                        formatter={(value: number) => [`$${value.toFixed(2)}M`, 'Monthly profit']}
                       />
-                      <Legend wrapperStyle={{ fontSize: '10px', color: chartTheme.text }} />
-                      {shutdownData.crossover != null && (
-                        <ReferenceLine
-                          x={Math.round(shutdownData.crossover / 5) * 5}
-                          stroke={GPIC_RED} strokeDasharray="4 4"
-                          label={{ value: `Break-even $${shutdownData.crossover.toFixed(0)}`, fill: GPIC_RED, fontSize: 10 }}
-                        />
-                      )}
-                      <ReferenceLine x={methP} stroke={GPIC_GREEN} strokeDasharray="4 4"
-                        label={{ value: `Current $${methP}`, fill: GPIC_GREEN, fontSize: 10 }} />
-                      <Line type="monotone" dataKey="runningProfit"  stroke={GPIC_GREEN} strokeWidth={2} dot={false} name="Methanol Running"   />
-                      <Line type="monotone" dataKey="shutdownProfit" stroke={GPIC_RED}   strokeWidth={2} dot={false} name="Methanol Shutdown" strokeDasharray="5 5" />
+                      <ReferenceLine x={methP} stroke="#64748b" strokeDasharray="6 4" />
+                      {shutdownData.crossover != null && <ReferenceLine x={shutdownData.crossover} stroke="#f59e0b" strokeDasharray="6 4" />}
+                      <Line type="monotone" dataKey="runningProfit" stroke="#006341" strokeWidth={3} dot={false} />
+                      <Line type="monotone" dataKey="shutdownProfit" stroke="#f43f5e" strokeWidth={3} dot={false} strokeDasharray="8 6" />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-              </Card>
-
-              <div className="p-4 rounded-xl border" style={{ backgroundColor: `${GPIC_NAVY}08`, borderColor: `${GPIC_NAVY}30` }}>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  <span className="font-semibold" style={{ color: GPIC_NAVY }}>Shutdown Analysis: </span>
-                  Shows monthly profit when methanol is running at minimum load vs fully shutdown,
-                  as methanol market price varies. The crossover price is where running methanol becomes more profitable.
-                  {shutdownData.crossover != null && ` At $${gasP}/MMBTU gas, break-even methanol = $${shutdownData.crossover.toFixed(1)}/MT.`}
+                <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+                  {shutdownData.currentGap >= 0
+                    ? `At the current methanol price, running beats shutdown by ${fmtSignedM(shutdownData.currentGap)}.`
+                    : `At the current methanol price, shutdown beats running by ${fmtSignedM(-shutdownData.currentGap)}.`}{' '}
+                  {shutdownData.crossover != null &&
+                    `The crossover sits at $${fmt(shutdownData.crossover, 1)}/MT, which is ${
+                      currentMethanolGap != null && currentMethanolGap >= 0 ? 'below' : 'above'
+                    } the current methanol assumption.`}
                 </p>
+              </SurfaceCard>
+
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <SurfaceCard eyebrow="Management interpretation" title="Decision guidance">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <InsightCard title="Current operating case" tone={scenarioTone} value={scenarioLabel} note="This is the solver-selected operating outcome under the current assumptions." />
+                    <InsightCard title="Methanol variable cost" tone="purple" value={`$${fmt(shutdownData.vcMeth, 1)}/MT`} note="Useful for reconciling market price pressure against running economics." />
+                    <InsightCard
+                      title="Price cushion"
+                      tone={currentMethanolGap == null ? 'slate' : currentMethanolGap >= 0 ? 'green' : 'rose'}
+                      value={currentMethanolGap == null ? 'Not available' : `${currentMethanolGap >= 0 ? '+' : ''}$${fmt(currentMethanolGap, 1)}/MT`}
+                      note="Current methanol price versus the running/shutdown crossover."
+                    />
+                  </div>
+                </SurfaceCard>
+                <SurfaceCard eyebrow="Current market" title="Reference values">
+                  <div className="space-y-3">
+                    <MetricSnapshot label="Methanol price" value={`$${fmt(methP, 1)}/MT`} note="Current assumption" />
+                    <MetricSnapshot label="Gas price" value={`$${fmt(gasP, 2)}/MMBTU`} note="Shared across both scenarios" tone="blue" />
+                    <MetricSnapshot label="Monthly fixed cost" value={fmtM(settings.FC_total)} note="Applied across scenarios" tone="rose" />
+                  </div>
+                </SurfaceCard>
               </div>
             </div>
           )}
 
-          {/* ════════════════ SENSITIVITY TAB ════════════════ */}
           {tab === 'sensitivity' && (
-            <div className="space-y-6 md:space-y-8">
-              <Card title="Monthly Profit vs Natural Gas Price">
-                <div className="h-80">
+            <div className="space-y-5 md:space-y-6">
+              <div className="grid gap-4 xl:grid-cols-3">
+                <MetricRailCard title="Current gas price" tone="blue" value={`$${fmt(gasP, 2)}/MMBTU`} subtitle="Current assumption" helper="This point is marked on the chart" />
+                <MetricRailCard title="Approx. break-even gas" tone={breakEvenGas == null ? 'slate' : 'amber'} value={breakEvenGas == null ? 'No crossover' : `$${fmt(breakEvenGas, 2)}/MMBTU`} subtitle="Monthly profit crosses zero" helper="Interpolated from the current sensitivity run" />
+                <MetricRailCard title="Profit at $10 gas" tone={terminalGasPoint.profit >= 0 ? 'green' : 'rose'} value={`$${fmt(terminalGasPoint.profit, 2)}M`} subtitle={`${fmtSignedM((terminalGasPoint.profit - currentGasPoint.profit) * 1e6)} vs current`} helper="High-end gas stress test" />
+              </div>
+
+              <SurfaceCard
+                eyebrow="Commodity risk"
+                title="Monthly profit vs natural gas price"
+                subtitle="Axis titles and reference labels are moved into the card framing so the chart stays legible on narrower widths."
+              >
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <LegendPill tone="green" label="Monthly profit" />
+                  <LegendPill tone="slate" label={`Current gas $${fmt(gasP, 2)}/MMBTU`} />
+                  {breakEvenGas != null && <LegendPill tone="amber" label={`Break-even $${fmt(breakEvenGas, 2)}/MMBTU`} />}
+                </div>
+                <div className="h-[360px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={gasSens} margin={{ left: 10, right: 20, bottom: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                      <XAxis dataKey="gasPrice" stroke={chartTheme.text} fontSize={10}
-                        label={{ value: 'Gas Price ($/MMBTU)', position: 'insideBottom', offset: -6, fontSize: 10, fill: chartTheme.text }} />
-                      <YAxis stroke={chartTheme.text} fontSize={10} tickFormatter={(v) => `$${v.toFixed(0)}M`} />
+                    <LineChart data={gasSensitivity} margin={{ top: 12, right: 20, left: 6, bottom: 10 }}>
+                      <CartesianGrid stroke={chartTheme.grid} strokeDasharray="4 4" />
+                      <XAxis type="number" dataKey="gasPrice" domain={[0.5, 10]} tickCount={10} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={10} stroke={chartTheme.axis} />
+                      <YAxis tickFormatter={(value) => `$${value.toFixed(0)}M`} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={12} stroke={chartTheme.axis} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor }}
-                        formatter={(v: number) => [`$${v.toFixed(2)}M`, 'Monthly Profit']}
-                        labelFormatter={(l) => `Gas: $${l}/MMBTU`}
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          border: `1px solid ${chartTheme.tooltipBorder}`,
+                          borderRadius: 18,
+                          color: chartTheme.tooltipText,
+                        }}
+                        formatter={(value: number) => [`$${value.toFixed(2)}M`, 'Monthly profit']}
+                        labelFormatter={(value) => `Gas price: $${fmt(Number(value), 2)}/MMBTU`}
                       />
-                      <ReferenceLine x={gasP}  stroke={GPIC_RED}  strokeDasharray="4 4" label={{ value: `Current $${gasP}`, fill: GPIC_RED, fontSize: 10 }} />
-                      <ReferenceLine y={0}      stroke={chartTheme.text} strokeDasharray="3 3" />
-                      <Line type="monotone" dataKey="profit" stroke={GPIC_GREEN} strokeWidth={2.5} dot={false} name="Monthly Profit ($M)" />
+                      <ReferenceLine x={gasP} stroke="#64748b" strokeDasharray="6 4" />
+                      {breakEvenGas != null && <ReferenceLine x={breakEvenGas} stroke="#f59e0b" strokeDasharray="6 4" />}
+                      <ReferenceLine y={0} stroke={chartTheme.axis} strokeDasharray="4 4" />
+                      <Line type="monotone" dataKey="profit" stroke="#006341" strokeWidth={3} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-              </Card>
-
-              <div className="p-4 rounded-xl border" style={{ backgroundColor: `${GPIC_GREEN}08`, borderColor: `${GPIC_GREEN}30` }}>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  <span className="font-semibold" style={{ color: GPIC_GREEN }}>Sensitivity Analysis: </span>
-                  Net monthly profit response to gas price changes from $0.5 to $10/MMBTU with all other
-                  inputs held constant. Red dashed line = current gas price. Crossing $0 = break-even gas price.
+                <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
+                  At the current gas price of ${fmt(gasP, 2)}/MMBTU, the model shows {fmtM(result.profit)} in monthly profit.{' '}
+                  {breakEvenGas != null && `The interpolated break-even gas price is about $${fmt(breakEvenGas, 2)}/MMBTU.`}
                 </p>
+              </SurfaceCard>
+
+              <div className="grid gap-5 xl:grid-cols-3">
+                <InsightCard title="Current profit point" tone={scenarioTone} value={fmtM(result.profit)} note="This matches the active scenario on the optimizer tab." />
+                <InsightCard title="Best case in scan" tone="green" value={`$${fmt(gasSensitivity[0].profit, 2)}M`} note="Profit at the lower end of the scanned gas range." />
+                <InsightCard title="Stress-case downside" tone="rose" value={fmtSignedM((terminalGasPoint.profit - currentGasPoint.profit) * 1e6)} note="Change in profit from the current gas point to the $10/MMBTU case." />
               </div>
             </div>
           )}
 
-          {/* ════════════════ SETTINGS TAB ════════════════ */}
           {tab === 'settings' && (
-            <div className="space-y-6 md:space-y-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Plant Parameters</h2>
-                  <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Adjust model constants sourced from the Excel reference model — v32</p>
+            <div className="space-y-5 md:space-y-6">
+              <SurfaceCard
+                eyebrow="Model constants"
+                title="Plant parameters and solver inputs"
+                subtitle="Advanced settings are grouped so reviewers can move through the model by engineering topic instead of scanning a wall of controls."
+                actions={
+                  <button
+                    type="button"
+                    onClick={resetSettings}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-500/15 dark:text-rose-300"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset to defaults
+                  </button>
+                }
+              >
+                <div className="grid gap-5 xl:grid-cols-3">
+                  {SETTINGS_GROUPS.map((group) => (
+                    <React.Fragment key={group.title}>
+                      <SettingsGroupCard
+                        title={group.title}
+                        description={group.description}
+                        tone={group.tone}
+                        icon={<group.icon className="h-4 w-4" />}
+                      >
+                        {group.fields.map((field) => (
+                          <React.Fragment key={field.key}>
+                            <SettingsInput
+                              label={field.label}
+                              value={settings[field.key]}
+                              onChange={(value) => updateSetting(field.key, value)}
+                              step={field.step}
+                              decimals={field.decimals}
+                            />
+                          </React.Fragment>
+                        ))}
+                      </SettingsGroupCard>
+                    </React.Fragment>
+                  ))}
                 </div>
-                <button
-                  onClick={resetSettings}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Reset to Defaults
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                <SettingsCard title="Gas Consumption" icon={<Flame className="w-4 h-4 text-orange-400" />}>
-                  <SettingsInput label="SGC Ammonia Case A (Nm³/MT)" value={settings.SGC_amm_A}        onChange={(v) => updateSetting('SGC_amm_A', v)}        step={0.1} />
-                  <SettingsInput label="SGC Ammonia Case B (Nm³/MT)" value={settings.SGC_amm_B}        onChange={(v) => updateSetting('SGC_amm_B', v)}        step={0.1} />
-                  <SettingsInput label="SGC Methanol (Nm³/MT)"       value={settings.SGC_meth}         onChange={(v) => updateSetting('SGC_meth', v)}         step={0.1} />
-                  <SettingsInput label="GT Gas (Nm³/day)"            value={settings.GT_gas_per_day}   onChange={(v) => updateSetting('GT_gas_per_day', v)}   step={1000} decimals={0} />
-                  <SettingsInput label="Flare Gas (Nm³/day)"         value={settings.flare_gas_per_day} onChange={(v) => updateSetting('flare_gas_per_day', v)} step={100} decimals={0} />
-                  <SettingsInput label="GT Additional Max (MMSCFD)"  value={settings.GT_additional_max} onChange={(v) => updateSetting('GT_additional_max', v)} step={0.01} />
-                </SettingsCard>
-
-                <SettingsCard title="Boiler Specific Consumption" icon={<Flame className="w-4 h-4 text-blue-400" />}>
-                  <SettingsInput label="Boiler NH₃ (Nm³/MT)"  value={settings.boiler_amm}  onChange={(v) => updateSetting('boiler_amm', v)}  step={0.1} />
-                  <SettingsInput label="Boiler MeOH (Nm³/MT)" value={settings.boiler_meth} onChange={(v) => updateSetting('boiler_meth', v)} step={0.1} />
-                  <SettingsInput label="Boiler Urea (Nm³/MT)" value={settings.boiler_urea} onChange={(v) => updateSetting('boiler_urea', v)} step={0.1} />
-                </SettingsCard>
-
-                <SettingsCard title="Gas Price Conversion" icon={<TrendingUp className="w-4 h-4 text-emerald-400" />}>
-                  <SettingsInput label="Base BHD/Nm³ (GPU!B21)"  value={settings.gas_bhd_per_nm3_base} onChange={(v) => updateSetting('gas_bhd_per_nm3_base', v)} step={0.0001} decimals={5} />
-                  <SettingsInput label="Base $/MMBTU (GPU!C21)"  value={settings.gas_base_mmbtu}        onChange={(v) => updateSetting('gas_base_mmbtu', v)}        step={0.25} />
-                  <SettingsInput label="BHD→USD Factor"          value={settings.bhd_to_usd}            onChange={(v) => updateSetting('bhd_to_usd', v)}            step={0.01} />
-                </SettingsCard>
-
-                <SettingsCard title="Utility Prices (Linear with Gas)" icon={<Zap className="w-4 h-4 text-cyan-400" />}>
-                  <SettingsInput label="MEW Power ($/kWh)" value={settings.MEW_power_price} onChange={(v) => updateSetting('MEW_power_price', v)} step={0.001} decimals={4} />
-                  <div className="pt-2 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sea Water</div>
-                  <SettingsInput label="Slope"     value={settings.SW_slope}     onChange={(v) => updateSetting('SW_slope', v)}     step={0.00001} decimals={7} />
-                  <SettingsInput label="Intercept" value={settings.SW_intercept} onChange={(v) => updateSetting('SW_intercept', v)} step={0.00001} decimals={7} />
-                  <div className="pt-2 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Fresh Cooling Water</div>
-                  <SettingsInput label="Slope"     value={settings.FCW_slope}     onChange={(v) => updateSetting('FCW_slope', v)}     step={0.00001} decimals={7} />
-                  <SettingsInput label="Intercept" value={settings.FCW_intercept} onChange={(v) => updateSetting('FCW_intercept', v)} step={0.00001} decimals={7} />
-                  <div className="pt-2 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Demin Water</div>
-                  <SettingsInput label="Slope"     value={settings.Demin_slope}     onChange={(v) => updateSetting('Demin_slope', v)}     step={0.0001} decimals={7} />
-                  <SettingsInput label="Intercept" value={settings.Demin_intercept} onChange={(v) => updateSetting('Demin_intercept', v)} step={0.0001} decimals={7} />
-                </SettingsCard>
-
-                <SettingsCard title="Ammonia Power & Utilities" icon={<Factory className="w-4 h-4 text-amber-400" />}>
-                  <SettingsInput label="GT Generated (MWH)"        value={settings.amm_GT_gen}              onChange={(v) => updateSetting('amm_GT_gen', v)}              step={0.5}   decimals={1} />
-                  <SettingsInput label="Import Power (MWH)"        value={settings.amm_Import_gen}          onChange={(v) => updateSetting('amm_Import_gen', v)}          step={0.5}   decimals={1} />
-                  <SettingsInput label="GT Nm³/kWh"                value={settings.GT_nm3_per_kwh}          onChange={(v) => updateSetting('GT_nm3_per_kwh', v)}          step={0.001} decimals={3} />
-                  <SettingsInput label="Total Power (kWh/yr)"      value={settings.amm_total_power_annual}  onChange={(v) => updateSetting('amm_total_power_annual', v)}  step={10000} decimals={0} />
-                  <SettingsInput label="Production (MT/yr)"        value={settings.amm_prod_annual}         onChange={(v) => updateSetting('amm_prod_annual', v)}         step={100}   decimals={0} />
-                  <SettingsInput label="HP Steam (T/MT)"           value={settings.amm_HP_steam}            onChange={(v) => updateSetting('amm_HP_steam', v)}            step={0.001} decimals={4} />
-                  <SettingsInput label="HP Steam Nm³/T"            value={settings.amm_HP_nm3_per_ton}      onChange={(v) => updateSetting('amm_HP_nm3_per_ton', v)}      step={1}     decimals={0} />
-                  <SettingsInput label="SW (m³/MT)"                value={settings.amm_SW}                  onChange={(v) => updateSetting('amm_SW', v)}                  step={0.1}   decimals={4} />
-                  <SettingsInput label="FCW (m³/MT)"               value={settings.amm_FCW}                 onChange={(v) => updateSetting('amm_FCW', v)}                 step={0.1}   decimals={4} />
-                  <SettingsInput label="Demin (m³/MT)"             value={settings.amm_Demin}               onChange={(v) => updateSetting('amm_Demin', v)}               step={0.01}  decimals={4} />
-                </SettingsCard>
-
-                <SettingsCard title="Methanol Power & Utilities" icon={<Factory className="w-4 h-4 text-purple-400" />}>
-                  <SettingsInput label="Total Power (kWh/yr)" value={settings.meth_total_power_annual} onChange={(v) => updateSetting('meth_total_power_annual', v)} step={10000} decimals={0} />
-                  <SettingsInput label="Production (MT/yr)"   value={settings.meth_prod_annual}        onChange={(v) => updateSetting('meth_prod_annual', v)}        step={100}   decimals={0} />
-                  <SettingsInput label="HP Steam (T/MT)"      value={settings.meth_HP_steam}           onChange={(v) => updateSetting('meth_HP_steam', v)}           step={0.001} decimals={6} />
-                  <SettingsInput label="SW (m³/MT)"           value={settings.meth_SW}                 onChange={(v) => updateSetting('meth_SW', v)}                 step={0.1}   decimals={4} />
-                  <SettingsInput label="FCW (m³/MT)"          value={settings.meth_FCW}                onChange={(v) => updateSetting('meth_FCW', v)}                step={0.1}   decimals={4} />
-                  <SettingsInput label="Demin (m³/MT)"        value={settings.meth_Demin}              onChange={(v) => updateSetting('meth_Demin', v)}              step={0.01}  decimals={4} />
-                </SettingsCard>
-
-                <SettingsCard title="Urea VC Parameters" icon={<Factory className="w-4 h-4 text-green-400" />}>
-                  <SettingsInput label="NH₃ Spec Cons (MT/MT)"   value={settings.urea_amm_spec}  onChange={(v) => updateSetting('urea_amm_spec', v)}  step={0.001} decimals={4} />
-                  <SettingsInput label="Power (kWh/MT)"           value={settings.urea_power}     onChange={(v) => updateSetting('urea_power', v)}     step={0.1}   decimals={4} />
-                  <SettingsInput label="CDR CO₂ (Nm³/MT)"         value={settings.CDR_co2}        onChange={(v) => updateSetting('CDR_co2', v)}        step={0.1}   decimals={4} />
-                  <SettingsInput label="CDR SW (m³/Nm³)"          value={settings.CDR_SW}         onChange={(v) => updateSetting('CDR_SW', v)}         step={0.001} decimals={4} />
-                  <SettingsInput label="CDR FCW (m³/Nm³)"         value={settings.CDR_FCW}        onChange={(v) => updateSetting('CDR_FCW', v)}        step={0.0001} decimals={4} />
-                  <SettingsInput label="CDR Power (kWh/Nm³)"      value={settings.CDR_power}      onChange={(v) => updateSetting('CDR_power', v)}      step={0.0001} decimals={5} />
-                  <SettingsInput label="CDR LP Steam (T/Nm³)"     value={settings.CDR_LP_steam}   onChange={(v) => updateSetting('CDR_LP_steam', v)}   step={0.0001} decimals={4} />
-                  <SettingsInput label="HP Steam (T/MT)"          value={settings.urea_HP_steam}  onChange={(v) => updateSetting('urea_HP_steam', v)}  step={0.001} decimals={4} />
-                  <SettingsInput label="MP Steam (T/MT)"          value={settings.urea_MP_steam}  onChange={(v) => updateSetting('urea_MP_steam', v)}  step={0.001} decimals={4} />
-                  <SettingsInput label="SW (m³/MT)"               value={settings.urea_SW}        onChange={(v) => updateSetting('urea_SW', v)}        step={0.1}   decimals={4} />
-                  <SettingsInput label="FCW (m³/MT)"              value={settings.urea_FCW}       onChange={(v) => updateSetting('urea_FCW', v)}       step={0.1}   decimals={4} />
-                  <SettingsInput label="Demin (m³/MT)"            value={settings.urea_Demin}     onChange={(v) => updateSetting('urea_Demin', v)}     step={0.001} decimals={4} />
-                  <SettingsInput label="UF85 (MT/MT)"             value={settings.UF85_cons}      onChange={(v) => updateSetting('UF85_cons', v)}      step={0.0001} decimals={7} />
-                  <SettingsInput label="UF85 MeOH Cons"           value={settings.UF85_meth_cons} onChange={(v) => updateSetting('UF85_meth_cons', v)} step={0.001} decimals={4} />
-                </SettingsCard>
-
-                <SettingsCard title="Process Coefficients" icon={<Activity className="w-4 h-4 text-purple-400" />}>
-                  <SettingsInput label="NH₃ → Urea (K7)"                  value={settings.K7}           onChange={(v) => updateSetting('K7', v)}           step={0.01}  decimals={4} />
-                  <SettingsInput label="Min MeOH Load — Running (MT/D)"   value={settings.methMin_MTD}  onChange={(v) => updateSetting('methMin_MTD', v)}  step={1}     decimals={0} />
-                  <SettingsInput label="CO₂ Capacity Coefficient"          value={settings.C33_coeff}    onChange={(v) => updateSetting('C33_coeff', v)}    step={0.001} decimals={4} />
-                  <SettingsInput label="Ammonia Cap Loss @ Min MeOH (MT/mo)" value={settings.ammCapLoss_A} onChange={(v) => updateSetting('ammCapLoss_A', v)} step={10} decimals={0} />
-                  <SettingsInput label="Ammonia Cap Loss — Shutdown (MT/mo)" value={settings.ammCapLoss_B} onChange={(v) => updateSetting('ammCapLoss_B', v)} step={10} decimals={0} />
-                  <SettingsInput label="Ammonia Penalty Case B ($/MT)"    value={settings.ammPenalty_B} onChange={(v) => updateSetting('ammPenalty_B', v)} step={1}     decimals={0} />
-                </SettingsCard>
-
-                <SettingsCard title="Fixed Costs & Conversion" icon={<TrendingUp className="w-4 h-4 text-rose-400" />}>
-                  <SettingsInput label="Total Fixed Cost ($/mo)" value={settings.FC_total}       onChange={(v) => updateSetting('FC_total', v)}       step={1000} decimals={2} />
-                  <SettingsInput label="NM³ → MMSCFD Factor"    value={settings.NM3_to_MMSCFD}  onChange={(v) => updateSetting('NM3_to_MMSCFD', v)}  step={0.001} decimals={3} />
-                </SettingsCard>
-              </div>
+              </SurfaceCard>
             </div>
           )}
         </div>
       </main>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPONENTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function useSystemTheme(): boolean {
-  const [isDark, setIsDark] = useState<boolean>(
-    () => typeof window !== 'undefined'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : false
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isDark;
-}
-
-function ProfitHero({ result, monthName }: { result: LPResult; monthName: string }) {
-  const isRunning = result.caseType.startsWith('A');
-  const isLoss    = result.profit < 0;
-
-  const operatingLabel = isLoss
-    ? 'Operating at a loss'
-    : isRunning
-    ? 'Methanol at or above minimum load'
-    : 'Methanol shutdown';
-
-  const operatingColor = isLoss
-    ? 'text-rose-500'
-    : isRunning
-    ? ''
-    : 'text-amber-500';
-
-  const profitColor = isLoss
-    ? 'text-rose-600 dark:text-rose-400'
-    : 'text-emerald-600 dark:text-emerald-400';
-
-  return (
-    <div className="gpic-card p-6 md:p-7">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        {/* Left: big profit number */}
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400 mb-2">Net Monthly Profit — {monthName}</p>
-          <div className={cn('text-4xl md:text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
-            {fmtM(result.profit)}
-          </div>
-          <p className="mt-2 text-[11px] font-semibold" style={isRunning && !isLoss ? { color: GPIC_GREEN } : {}}>
-            <span className={cn(operatingColor)}>
-              {operatingLabel}
-            </span>
-          </p>
-        </div>
-        {/* Right: three quick stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 md:gap-10 min-w-[260px]">
-          <div className="text-right">
-            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Ammonia</p>
-            <p className="text-xl font-bold font-mono text-amber-500">{result.dailyAmm.toFixed(0)} MT/D</p>
-            <p className="text-[11px] text-slate-400">{(result.K11).toFixed(0)} MT saleable</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Methanol</p>
-            <p className="text-xl font-bold font-mono text-purple-500">{result.dailyMeth.toFixed(0)} MT/D</p>
-            <p className="text-[11px] text-slate-400">{(result.D5).toFixed(0)} MT total</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Urea</p>
-            <p className="text-xl font-bold font-mono text-emerald-500">{result.dailyUrea.toFixed(0)} MT/D</p>
-            <p className="text-[11px] text-slate-400">{(result.K9).toFixed(0)} MT saleable</p>
-          </div>
-        </div>
-      </div>
-      {/* Bottom strip — gas and simple operational context */}
-      <div className="mt-6 pt-4 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-x-8 gap-y-2 text-[11px]">
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Gas Consumed</span>
-          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{result.gas.toFixed(2)} MMSCFD</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Ammonia Saleable</span>
-          <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{result.K11.toFixed(0)} MT/mo</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Urea Saleable</span>
-          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{result.K9.toFixed(0)} MT/mo</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-slate-400">Methanol Total</span>
-          <span className="font-mono font-bold text-purple-600 dark:text-purple-400">{result.D5.toFixed(0)} MT/mo</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusBanner({ result }: { result: LPResult }) {
-  const isLoss    = result.profit < 0;
-  const isRunning = result.caseType.startsWith('A');
-
-  // ── Three possible states ──
-  const state = isLoss ? 'loss' : isRunning ? 'running' : 'shutdown';
-
-  const cfg = {
-    running: {
-      borderColor: GPIC_GREEN,
-      badge: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
-      dot: 'bg-emerald-500',
-      label: 'Methanol at or above minimum load',
-      sub: 'Optimal production mix — all plants running',
-    },
-    shutdown: {
-      borderColor: '#b45309',
-      badge: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800',
-      dot: 'bg-amber-500',
-      label: 'Methanol shutdown',
-      sub: 'Methanol plant offline — ammonia and urea production only',
-    },
-    loss: {
-      borderColor: GPIC_RED,
-      badge: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800',
-      dot: 'bg-rose-500',
-      label: 'Operating at a loss',
-      sub: 'Revenue below variable cost — review prices or gas contract',
-    },
-  }[state];
-
-  return (
-    <div
-      className="status-banner bg-[var(--surface-elevated)] border-b border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
-      style={{ borderLeftWidth: 4, borderLeftStyle: 'solid', borderLeftColor: cfg.borderColor }}
-    >
-      {/* Left: status badge + description */}
-      <div className="flex items-center gap-3">
-        <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot)} />
-        <span className={cn(
-          'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border',
-          cfg.badge
-        )}>
-          {cfg.label}
-        </span>
-        <span className="text-xs text-slate-500 dark:text-slate-400 hidden md:inline">
-          {cfg.sub}
-        </span>
-      </div>
-
-      {/* Right: three key figures */}
-      <div className="flex items-center divide-x divide-slate-200 dark:divide-slate-700">
-        <div className="px-4 first:pl-0 text-right">
-          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Monthly Profit</div>
-          <div className={cn('text-sm font-extrabold font-mono',
-            result.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-          )}>
-            {result.profit >= 0 ? '+' : ''}{(result.profit / 1e6).toFixed(2)}M USD
-          </div>
-        </div>
-        <div className="px-4 text-right hidden sm:block">
-          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Gas Consumed</div>
-          <div className="text-sm font-bold font-mono text-slate-700 dark:text-slate-200">{result.gas.toFixed(2)} MMSCFD</div>
-        </div>
-        <div className="px-4 text-right hidden md:block">
-          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ammonia</div>
-          <div className="text-sm font-bold font-mono text-amber-500">{result.dailyAmm.toFixed(0)} MT/D</div>
-        </div>
-        <div className="px-4 text-right hidden md:block">
-          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Methanol</div>
-          <div className="text-sm font-bold font-mono text-purple-500">{result.dailyMeth.toFixed(0)} MT/D</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CollapsibleHeader({ label, icon, isOpen, onToggle }: {
-  label: string;
-  icon: React.ReactNode;
-  isOpen: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button onClick={onToggle} className="w-full flex items-center justify-between text-slate-600 dark:text-slate-300">
-      <span className="flex items-center gap-2">
-        {icon}
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider">{label}</h2>
-      </span>
-      <ChevronDown className={cn("w-4 h-4 transition-transform", isOpen ? "rotate-180" : "")} />
-    </button>
-  );
-}
-
-function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
-  label: string; value: number; onChange: (v: number) => void;
-  min: number; max: number; step?: number; unit: string;
-}) {
-  return (
-    <div className="space-y-2.5">
-      <div className="flex justify-between items-center">
-        <label className="text-[11px] font-medium tracking-wide text-slate-600 dark:text-slate-300">{label}</label>
-        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-md px-2 py-1 border border-slate-300 dark:border-slate-700 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all">
-          <input
-            type="number"
-            value={value}
-            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
-            step={step}
-            className="w-20 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
-            aria-label={`${label} value`}
-          />
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal select-none">{unit}</span>
-        </div>
-      </div>
-      <input
-        type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="gpic-range w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer transition-all"
-        aria-label={label}
-      />
-    </div>
-  );
-}
-
-function TabButton({ active, onClick, label, icon }: {
-  active: boolean; onClick: () => void; label: string; icon: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-semibold transition-all uppercase tracking-wider whitespace-nowrap",
-        active
-          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
-          : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function KPICard({ title, value, sub, color, big }: {
-  title: string; value: string; sub?: string; color: string; big?: boolean;
-}) {
-  const colors: Record<string, string> = {
-    emerald: 'text-emerald-600 dark:text-emerald-500',
-    amber:   'text-amber-600 dark:text-amber-500',
-    purple:  'text-purple-600 dark:text-purple-500',
-    green:   'text-green-600 dark:text-green-500',
-    rose:    'text-rose-600 dark:text-rose-500',
-  };
-  return (
-    <div className="gpic-card p-4">
-      <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2 tracking-[0.12em] uppercase">{title}</h3>
-      <div className={cn("font-extrabold font-mono tracking-tight", big ? "text-3xl" : "text-2xl", colors[color])}>{value}</div>
-      {sub && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{sub}</p>}
-    </div>
-  );
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="gpic-card p-5 md:p-6">
-      <div className="flex items-center gap-2 mb-5">
-        <div className="w-1 h-5 rounded-full" style={{ backgroundColor: GPIC_GREEN }} />
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-100 tracking-normal">{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function BreakdownItem({ label, value, color, max }: { label: string; value: number; color: string; max: number }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs">
-        <span className="text-slate-500 dark:text-slate-400">{label}</span>
-        <span className="text-slate-900 dark:text-slate-200 font-mono font-semibold">{fmtM(value)}</span>
-      </div>
-      <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all duration-500", color)} style={{ width: `${max > 0 ? (Math.abs(value) / max) * 100 : 0}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function GasItem({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
-  const pct = total > 0 ? (value / total) * 100 : 0;
-  return (
-    <div className="text-center space-y-2">
-      <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{label}</div>
-      <div className="text-sm font-mono font-bold text-slate-900 dark:text-slate-200">{fmt(value / 1e6, 2)}M</div>
-      <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mx-2">
-        <div className={cn("h-full rounded-full transition-all duration-500", color)} style={{ width: `${pct}%` }} />
-      </div>
-      <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{fmt(pct, 1)}%</div>
-    </div>
-  );
-}
-
-function MarginRow({ name, vc, price, vol, color }: { name: string; vc: number; price: number; vol: number; color: string }) {
-  const margin = price - vc;
-  return (
-    <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-      <td className={cn("py-3.5 text-[13px] font-semibold", color)}>{name}</td>
-      <td className="py-3.5 text-right text-[13px] font-mono text-slate-500 dark:text-slate-400">${fmt(vc, 1)}</td>
-      <td className="py-3.5 text-right text-[13px] font-mono text-slate-500 dark:text-slate-400">${fmt(price, 1)}</td>
-      <td className={cn("py-3.5 text-right text-[13px] font-mono font-bold", margin >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500')}>${fmt(margin, 1)}</td>
-      <td className="py-3.5 text-right text-[13px] font-mono text-slate-500 dark:text-slate-400">{fmt(vol, 0)}</td>
-      <td className="py-3.5 text-right text-[13px] font-mono text-slate-700 dark:text-slate-200 font-semibold">{fmtM(margin * vol)}</td>
-    </tr>
-  );
-}
-
-function SettingsCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="gpic-card p-5 md:p-6">
-      <div className="flex items-center gap-2 mb-5">
-        {icon}
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h3>
-      </div>
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
-}
-
-function VCRow({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
-  const pct = total > 0 ? (value / total) * 100 : 0;
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-xs">
-        <span className="text-slate-500 dark:text-slate-400">{label}</span>
-        <span className="text-slate-700 dark:text-slate-300 font-mono">
-          ${value.toFixed(2)} <span className="text-slate-400 dark:text-slate-600">({pct.toFixed(1)}%)</span>
-        </span>
-      </div>
-      <div className="h-1 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all duration-500", color)} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function SettingsInput({ label, value, onChange, step = 1, decimals = 2 }: {
-  label: string; value: number; onChange: (v: number) => void; step?: number; decimals?: number;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <label className="text-xs text-slate-600 dark:text-slate-300 shrink-0 leading-snug">{label}</label>
-      <input
-        type="number"
-        value={Number(value.toFixed(decimals))}
-        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
-        step={step}
-        className="w-36 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-right text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-colors"
-        aria-label={label}
-      />
     </div>
   );
 }
