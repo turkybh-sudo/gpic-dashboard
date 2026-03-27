@@ -1,6 +1,6 @@
 /**
  * GPIC Complex Optimizer — App.tsx
- * All changes applied: GT toggle, dynamic alpha, methMin_MTD,
+ * All changes applied: GT toggle, fixed alpha, methMin_MTD,
  * GPIC branding, mobile responsive, status banner, print button.
  *
  * NOTE: Place your logo file at src/assets/gpic-logo.png before running.
