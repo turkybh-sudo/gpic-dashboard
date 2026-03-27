@@ -117,9 +117,8 @@ function getScenarioTone(result: LPResult): Tone {
 }
 
 function getScenarioLabel(result: LPResult) {
-  if (result.profit < 0) return 'Operating below contribution breakeven';
-  if (result.caseType.startsWith('A')) return 'Methanol running at or above minimum load';
-  return 'Methanol shutdown selected';
+  if (result.caseType.startsWith('A')) return 'Methanol running';
+  return 'Methanol shutdown';
 }
 
 export default function App() {
@@ -289,7 +288,6 @@ export default function App() {
   const scenarioLabel = getScenarioLabel(result);
   const activeTab = TAB_ITEMS.find((item) => item.id === tab) ?? TAB_ITEMS[0];
   const breakEvenGas = findZeroCrossing(gasSensitivity.map((item) => ({ x: item.gasPrice, y: item.profit })));
-  const currentMethanolGap = shutdownData.crossover == null ? null : methP - shutdownData.crossover;
   const profitTone: Tone = result.profit >= 0 ? 'green' : 'rose';
 
   const productRows = [
@@ -825,17 +823,11 @@ export default function App() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  <MiniAsideStat label="Current MeOH price" value={`$${fmt(methP, 1)}/MT`} tone="slate" />
+                <div className="mt-5 grid gap-3 md:grid-cols-1">
                   <MiniAsideStat
                     label="Methanol shutdown price"
                     value={shutdownData.crossover == null ? 'Not in scan' : `$${fmt(shutdownData.crossover, 1)}/MT`}
                     tone={shutdownData.crossover == null ? 'slate' : 'amber'}
-                  />
-                  <MiniAsideStat
-                    label="Current gap"
-                    value={currentMethanolGap == null ? 'Not available' : `${currentMethanolGap >= 0 ? '+' : ''}$${fmt(currentMethanolGap, 1)}/MT`}
-                    tone={currentMethanolGap == null ? 'slate' : currentMethanolGap >= 0 ? 'green' : 'rose'}
                   />
                 </div>
               </SurfaceCard>
@@ -889,10 +881,10 @@ export default function App() {
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-5 grid gap-3 md:grid-cols-3">
-                  <MiniAsideStat label="Current gas" value={`$${fmt(gasP, 2)}/MMBTU`} tone="blue" />
+                  <MiniAsideStat label="Current gas price" value={`$${fmt(gasP, 2)}/MMBTU`} tone="blue" />
                   <MiniAsideStat label="Current profit" value={fmtM(result.profit)} tone={profitTone} />
                   <MiniAsideStat
-                    label="Break-even gas"
+                    label="Break-even gas price"
                     value={breakEvenGas == null ? 'Not in scan' : `$${fmt(breakEvenGas, 2)}/MMBTU`}
                     tone={breakEvenGas == null ? 'slate' : 'amber'}
                   />
