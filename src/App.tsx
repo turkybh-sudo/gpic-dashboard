@@ -48,7 +48,7 @@ import {
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-// ─── Uncomment after placing the logo file at src/assets/gpic-logo.png ───
+import gpicLogo from './assets/gpic-logo.png';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
