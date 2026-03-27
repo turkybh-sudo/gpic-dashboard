@@ -6,7 +6,7 @@
  * NOTE: Place your logo file at src/assets/gpic-logo.png before running.
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   LayoutDashboard,
   TrendingUp,
@@ -18,8 +18,6 @@ import {
   RotateCcw,
   Flame,
   Gauge,
-  Sun,
-  Moon,
   Menu,
   Printer,
   X,
@@ -82,13 +80,11 @@ export default function App() {
   const [maxGas, setMaxGas]   = useState(128);
   const [monthIdx, setMonthIdx] = useState(4);
   const [tab, setTab]         = useState('optimizer');
-  const [theme, setTheme]     = useState<'dark' | 'light'>('dark');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [gtRunning, setGtRunning]     = useState(true);
 
-  const toggleTheme = useCallback(() => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  }, []);
+  // ── System preference dark mode (no manual toggle needed) ──
+  const isDark = useSystemTheme();
 
   const [settings, setSettings] = useState<Settings>({ ...BASE_DEFAULTS } as Settings);
 
@@ -145,7 +141,7 @@ export default function App() {
     return data;
   }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
-  const chartTheme = theme === 'dark' ? {
+  const chartTheme = isDark ? {
     grid: '#1e293b', text: '#94a3b8',
     tooltipBg: '#1e293b', tooltipBorder: '#334155', tooltipColor: '#f8fafc',
     barCap: '#475569',
@@ -156,10 +152,7 @@ export default function App() {
   };
 
   return (
-    <div className={cn(
-      "min-h-screen font-sans selection:bg-emerald-500/30 transition-colors duration-300",
-      theme === 'dark' ? 'dark bg-slate-950 text-slate-200' : 'bg-slate-50 text-slate-900'
-    )}>
+    <div className="min-h-screen font-sans selection:bg-emerald-500/30 bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-300">
 
       {/* Mobile backdrop */}
       {sidebarOpen && (
@@ -186,7 +179,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <div className="flex flex-col gap-0.5">
               <img src={gpicLogo} alt="GPIC" className="w-28 object-contain p-1 dark:brightness-90" />
-              <h1 className="text-[10px] font-semibold uppercase tracking-widest text-center" style={{ color: GPIC_NAVY }}>
+              <h1 className="text-[11px] font-medium tracking-wider text-center" style={{ color: GPIC_NAVY }}>
                 Complex Optimizer
               </h1>
             </div>
@@ -203,7 +196,7 @@ export default function App() {
           <section>
             <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
               <Settings2 className="w-4 h-4" />
-              <h2 className="text-xs font-semibold uppercase tracking-wider">Market Controls</h2>
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Controls</h2>
             </div>
 
             <div className="space-y-6">
@@ -216,10 +209,10 @@ export default function App() {
               {/* GT Toggle */}
               <div className="flex items-center justify-between pt-1">
                 <div className="space-y-0.5">
-                  <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  <label className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
                     Gas Turbine (GT)
                   </label>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-600">
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500">
                     {gtRunning ? 'GT on — power split + gas load active' : 'GT off — 100% MEW import power'}
                   </p>
                 </div>
@@ -241,7 +234,7 @@ export default function App() {
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
                   <Gauge className="w-4 h-4" />
-                  <h2 className="text-xs font-semibold uppercase tracking-wider">Plant Capacities</h2>
+                  <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Plant Capacities</h2>
                 </div>
                 <div className="space-y-6">
                   <ControlSlider label="Max Ammonia" value={maxAmm}  onChange={setMaxAmm}  min={1000} max={1500} unit="MT/D" />
@@ -252,7 +245,7 @@ export default function App() {
 
               {/* Month Selector */}
               <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Operating Month</label>
+                <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Operating Month</label>
                 <select
                   value={monthIdx}
                   onChange={(e) => setMonthIdx(parseInt(e.target.value))}
@@ -267,7 +260,7 @@ export default function App() {
           <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Model v32: Component-level VC — Gas, Power (GT/Import), HP/MP/LP Steam, SW, FCW, Demin, CDR, UF85.
                 Dynamic alpha scales ammonia capacity with methanol load.
               </p>
@@ -306,13 +299,7 @@ export default function App() {
               <Printer className="w-3.5 h-3.5" />
               Export
             </button>
-            {/* Theme toggle */}
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 transition-colors"
-            >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
+
           </div>
         </header>
 
@@ -331,7 +318,7 @@ export default function App() {
                 <KPICard title="Ammonia"  value={`${fmt(result.dailyAmm,  1)} MT/D`} sub={`${fmt(result.K11, 0)} MT saleable`} color="amber"  />
                 <KPICard title="Methanol" value={`${fmt(result.dailyMeth, 1)} MT/D`} sub={`${fmt(result.D5,  0)} MT total`}    color="purple" />
                 <KPICard title="Urea"     value={`${fmt(result.dailyUrea, 1)} MT/D`} sub={`${fmt(result.K9,  0)} MT saleable`} color="green"  />
-                <KPICard title="Gas Consumption" value={`${fmt(result.gas, 2)} MMSCFD`} sub={gtRunning ? 'GT on — mixed power' : 'GT off — MEW power only'} color="rose" />
+                <KPICard title="Gas Consumption" value={`${fmt(result.gas, 2)} MMSCFD`} sub={`${((result.gas / maxGas) * 100).toFixed(1)}% of ${maxGas} MMSCFD limit`} color="rose" />
               </div>
 
               {/* Production vs Capacity + Profit Contribution */}
@@ -397,67 +384,108 @@ export default function App() {
 
               {/* Gas Consumption Breakdown */}
               <Card title="Gas Consumption Breakdown">
-                <div className="flex flex-col lg:flex-row items-center gap-6">
-                  {/* Pie chart */}
-                  <div className="w-full lg:w-64 h-52 flex-shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Ammonia',     value: result.gasBreakdown.ammonia_nm3,  fill: '#f59e0b' },
-                            { name: 'Methanol',    value: result.gasBreakdown.methanol_nm3, fill: '#a855f7' },
-                            { name: 'Boilers',     value: result.gasBreakdown.boiler_nm3,   fill: '#3b82f6' },
-                            { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3,       fill: '#f97316' },
-                            { name: 'Flare',       value: result.gasBreakdown.flare_nm3,    fill: '#64748b' },
-                          ].filter(d => d.value > 0)}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={90}
-                          paddingAngle={2}
-                          dataKey="value"
-                        >
-                          {[
-                            { name: 'Ammonia',     value: result.gasBreakdown.ammonia_nm3,  fill: '#f59e0b' },
-                            { name: 'Methanol',    value: result.gasBreakdown.methanol_nm3, fill: '#a855f7' },
-                            { name: 'Boilers',     value: result.gasBreakdown.boiler_nm3,   fill: '#3b82f6' },
-                            { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3,       fill: '#f97316' },
-                            { name: 'Flare',       value: result.gasBreakdown.flare_nm3,    fill: '#64748b' },
-                          ].filter(d => d.value > 0).map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc' }}
-                          formatter={(value: number) => [`${(value / 1e6).toFixed(2)}M Nm³`, '']}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {/* Legend / breakdown strips */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-3 w-full lg:w-auto flex-1">
-                    <GasItem label="Ammonia"     value={result.gasBreakdown.ammonia_nm3}  total={result.gasTotal_nm3} color="bg-amber-500"  />
-                    <GasItem label="Methanol"    value={result.gasBreakdown.methanol_nm3} total={result.gasTotal_nm3} color="bg-purple-500" />
-                    <GasItem label="Boilers"     value={result.gasBreakdown.boiler_nm3}   total={result.gasTotal_nm3} color="bg-blue-500"   />
-                    <GasItem label="Gas Turbine" value={result.gasBreakdown.gt_nm3}       total={result.gasTotal_nm3} color="bg-orange-500" />
-                    <GasItem label="Flare"       value={result.gasBreakdown.flare_nm3}    total={result.gasTotal_nm3} color="bg-slate-500"  />
-                  </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-6 text-[11px]">
-                  <div>
-                    <span className="text-slate-500">Gas Limit</span>
-                    <span className="ml-2 font-mono font-semibold text-slate-700 dark:text-slate-300">{fmt(maxGas, 2)} MMSCFD</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Consumed</span>
-                    <span className="ml-2 font-mono font-semibold text-slate-700 dark:text-slate-300">{fmt(result.gas, 2)} MMSCFD</span>
-                  </div>
-                  <div>
-                    <span className={cn("text-[10px] font-bold uppercase px-2 py-0.5 rounded-full", gtRunning ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500" : "bg-slate-200 dark:bg-slate-700 text-slate-500")}>
-                      GT {gtRunning ? 'ON' : 'OFF'}
-                    </span>
-                  </div>
-                </div>
+                {(() => {
+                  const GAS_COLORS: Record<string, string> = {
+                    'Ammonia': '#f59e0b',
+                    'Methanol': '#a855f7',
+                    'Boilers': '#3b82f6',
+                    'Gas Turbine': '#f97316',
+                    'Flare': '#64748b',
+                  };
+                  const gasData = [
+                    { name: 'Ammonia',     value: result.gasBreakdown.ammonia_nm3 },
+                    { name: 'Methanol',    value: result.gasBreakdown.methanol_nm3 },
+                    { name: 'Boilers',     value: result.gasBreakdown.boiler_nm3 },
+                    { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3 },
+                    { name: 'Flare',       value: result.gasBreakdown.flare_nm3 },
+                  ].filter(d => d.value > 0)
+                   .map(d => ({ ...d, pct: result.gasTotal_nm3 > 0 ? (d.value / result.gasTotal_nm3) * 100 : 0 }))
+                   .sort((a, b) => b.value - a.value);
+
+                  return (
+                    <div className="flex flex-col lg:flex-row gap-6 items-start">
+                      {/* Donut pie — left */}
+                      <div className="w-full lg:w-56 h-56 flex-shrink-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={gasData}
+                              cx="50%" cy="50%"
+                              innerRadius={60} outerRadius={95}
+                              paddingAngle={2}
+                              dataKey="value"
+                            >
+                              {gasData.map((entry) => (
+                                <Cell key={entry.name} fill={GAS_COLORS[entry.name] || '#94a3b8'} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor, fontSize: '12px' }}
+                              formatter={(value: number, name: string) => [
+                                `${(value / 1e6).toFixed(2)}M Nm³  (${result.gasTotal_nm3 > 0 ? ((value / result.gasTotal_nm3) * 100).toFixed(1) : 0}%)`,
+                                name
+                              ]}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Horizontal bar breakdown — right, industry standard */}
+                      <div className="flex-1 w-full space-y-3">
+                        {gasData.map((item) => (
+                          <div key={item.name}>
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: GAS_COLORS[item.name] || '#94a3b8' }} />
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{item.name}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">
+                                  {(item.value / 1e6).toFixed(2)}M Nm³
+                                </span>
+                                <span className="text-[11px] font-medium font-mono text-slate-400 w-10 text-right">
+                                  {item.pct.toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                            <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-700"
+                                style={{ width: `${item.pct}%`, backgroundColor: GAS_COLORS[item.name] || '#94a3b8' }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Footer totals */}
+                        <div className="pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-400">Total consumed</span>
+                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{result.gas.toFixed(2)} MMSCFD</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-400">Limit</span>
+                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{maxGas.toFixed(2)} MMSCFD</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-400">Headroom</span>
+                            <span className={cn("font-mono font-bold", (maxGas - result.gas) < 2 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400')}>
+                              {(maxGas - result.gas).toFixed(2)} MMSCFD
+                            </span>
+                          </div>
+                          <span className={cn(
+                            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                            gtRunning
+                              ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700"
+                          )}>
+                            GT {gtRunning ? 'ON' : 'OFF'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </Card>
 
               {/* Contribution Margin Analysis Table */}
@@ -467,7 +495,7 @@ export default function App() {
                     <thead>
                       <tr className="border-b border-slate-200 dark:border-slate-800">
                         {['Product','VC ($/MT)','Price ($/MT)','Margin ($/MT)','Volume (MT)','Contribution'].map(h => (
-                          <th key={h} className={cn("py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500", h === 'Product' ? 'text-left' : 'text-right')}>{h}</th>
+                          <th key={h} className={cn("py-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500", h === 'Product' ? 'text-left' : 'text-right')}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -620,7 +648,7 @@ export default function App() {
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white">Plant Parameters</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Adjust model constants sourced from Excel reference — v32</p>
+                  <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Adjust model constants sourced from the Excel reference model — v32</p>
                 </div>
                 <button
                   onClick={resetSettings}
@@ -655,13 +683,13 @@ export default function App() {
 
                 <SettingsCard title="Utility Prices (Linear with Gas)" icon={<Zap className="w-4 h-4 text-cyan-400" />}>
                   <SettingsInput label="MEW Power ($/kWh)" value={settings.MEW_power_price} onChange={(v) => updateSetting('MEW_power_price', v)} step={0.001} decimals={4} />
-                  <div className="pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sea Water</div>
+                  <div className="pt-2 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sea Water</div>
                   <SettingsInput label="Slope"     value={settings.SW_slope}     onChange={(v) => updateSetting('SW_slope', v)}     step={0.00001} decimals={7} />
                   <SettingsInput label="Intercept" value={settings.SW_intercept} onChange={(v) => updateSetting('SW_intercept', v)} step={0.00001} decimals={7} />
-                  <div className="pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fresh Cooling Water</div>
+                  <div className="pt-2 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Fresh Cooling Water</div>
                   <SettingsInput label="Slope"     value={settings.FCW_slope}     onChange={(v) => updateSetting('FCW_slope', v)}     step={0.00001} decimals={7} />
                   <SettingsInput label="Intercept" value={settings.FCW_intercept} onChange={(v) => updateSetting('FCW_intercept', v)} step={0.00001} decimals={7} />
-                  <div className="pt-2 pb-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Demin Water</div>
+                  <div className="pt-2 pb-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Demin Water</div>
                   <SettingsInput label="Slope"     value={settings.Demin_slope}     onChange={(v) => updateSetting('Demin_slope', v)}     step={0.0001} decimals={7} />
                   <SettingsInput label="Intercept" value={settings.Demin_intercept} onChange={(v) => updateSetting('Demin_intercept', v)} step={0.0001} decimals={7} />
                 </SettingsCard>
@@ -731,6 +759,21 @@ export default function App() {
 // COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function useSystemTheme(): boolean {
+  const [isDark, setIsDark] = useState<boolean>(
+    () => typeof window !== 'undefined'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isDark;
+}
+
 function ProfitHero({ result, monthName }: { result: LPResult; monthName: string }) {
   const isRunning = result.caseType.startsWith('A');
   const isLoss    = result.profit < 0;
@@ -756,7 +799,7 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: big profit number */}
         <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Net Monthly Profit — {monthName}</p>
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Net Monthly Profit — {monthName}</p>
           <div className={cn('text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
             {fmtM(result.profit)}
           </div>
@@ -769,39 +812,39 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
         {/* Right: three quick stats */}
         <div className="flex gap-6 md:gap-10">
           <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ammonia</p>
+            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Ammonia</p>
             <p className="text-xl font-bold font-mono text-amber-500">{result.dailyAmm.toFixed(0)} MT/D</p>
-            <p className="text-[10px] text-slate-400">{(result.K11).toFixed(0)} MT saleable</p>
+            <p className="text-[11px] text-slate-400">{(result.K11).toFixed(0)} MT saleable</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Methanol</p>
+            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Methanol</p>
             <p className="text-xl font-bold font-mono text-purple-500">{result.dailyMeth.toFixed(0)} MT/D</p>
-            <p className="text-[10px] text-slate-400">{(result.D5).toFixed(0)} MT total</p>
+            <p className="text-[11px] text-slate-400">{(result.D5).toFixed(0)} MT total</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Urea</p>
+            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mb-1">Urea</p>
             <p className="text-xl font-bold font-mono text-emerald-500">{result.dailyUrea.toFixed(0)} MT/D</p>
-            <p className="text-[10px] text-slate-400">{(result.K9).toFixed(0)} MT saleable</p>
+            <p className="text-[11px] text-slate-400">{(result.K9).toFixed(0)} MT saleable</p>
           </div>
         </div>
       </div>
-      {/* Bottom divider with gas + operating status bar */}
-      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-6 text-[11px]">
+      {/* Bottom strip — gas and simple operational context */}
+      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-x-8 gap-y-2 text-[11px]">
         <div className="flex items-center gap-2">
           <span className="text-slate-400">Gas Consumed</span>
           <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{result.gas.toFixed(2)} MMSCFD</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Ammonia VC</span>
-          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">${result.vcAmm.toFixed(1)}/MT</span>
+          <span className="text-slate-400">Ammonia Saleable</span>
+          <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{result.K11.toFixed(0)} MT/mo</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Methanol VC</span>
-          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">${result.vcMeth.toFixed(1)}/MT</span>
+          <span className="text-slate-400">Urea Saleable</span>
+          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{result.K9.toFixed(0)} MT/mo</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Urea VC</span>
-          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">${result.vcUrea.toFixed(1)}/MT</span>
+          <span className="text-slate-400">Methanol Total</span>
+          <span className="font-mono font-bold text-purple-600 dark:text-purple-400">{result.D5.toFixed(0)} MT/mo</span>
         </div>
       </div>
     </div>
@@ -809,79 +852,76 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
 }
 
 function StatusBanner({ result }: { result: LPResult }) {
-  const isLoss     = result.profit < 0;
-  const isRunning  = result.caseType.startsWith('A');
-  const isShutdown = !isRunning && !isLoss;
+  const isLoss    = result.profit < 0;
+  const isRunning = result.caseType.startsWith('A');
 
-  // ── Determine label, color scheme, background ──
-  const label = isLoss
-    ? 'OPERATING AT A LOSS'
-    : isRunning
-    ? 'METHANOL AT OR ABOVE MINIMUM LOAD'
-    : 'METHANOL SHUTDOWN';
+  // ── Three possible states ──
+  const state = isLoss ? 'loss' : isRunning ? 'running' : 'shutdown';
 
-  const sub = isLoss
-    ? 'Revenue is below variable cost — review market prices or gas contract'
-    : isRunning
-    ? 'Methanol plant running — optimal production mix active'
-    : 'Methanol plant shutdown — ammonia and urea only';
-
-  // Solid navy background when running (management-grade visibility),
-  // red tint for loss, amber tint for shutdown
-  const bannerBg = isLoss
-    ? 'bg-rose-600'
-    : isRunning
-    ? ''  // handled via style for exact GPIC navy
-    : 'bg-amber-500';
-
-  const bannerStyle = isRunning
-    ? { backgroundColor: GPIC_NAVY }
-    : isLoss
-    ? {}
-    : {};
-
-  const textColor  = (isRunning || isLoss) ? 'text-white' : 'text-white';
-  const subColor   = (isRunning || isLoss) ? 'text-white/70' : 'text-white/80';
-  const dotColor   = isLoss ? 'bg-red-200' : isRunning ? 'bg-emerald-400' : 'bg-amber-200';
-  const profitColor = isLoss ? 'text-red-200' : 'text-emerald-300';
+  const cfg = {
+    running: {
+      borderColor: GPIC_GREEN,
+      badge: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
+      dot: 'bg-emerald-500',
+      label: 'Methanol at or above minimum load',
+      sub: 'Optimal production mix — all plants running',
+    },
+    shutdown: {
+      borderColor: '#b45309',
+      badge: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+      dot: 'bg-amber-500',
+      label: 'Methanol shutdown',
+      sub: 'Methanol plant offline — ammonia and urea production only',
+    },
+    loss: {
+      borderColor: GPIC_RED,
+      badge: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800',
+      dot: 'bg-rose-500',
+      label: 'Operating at a loss',
+      sub: 'Revenue below variable cost — review prices or gas contract',
+    },
+  }[state];
 
   return (
     <div
-      className={cn('status-banner flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 py-3', bannerBg)}
-      style={bannerStyle}
+      className="status-banner bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
+      style={{ borderLeftWidth: 4, borderLeftStyle: 'solid', borderLeftColor: cfg.borderColor }}
     >
-      {/* Left: status label */}
+      {/* Left: status badge + description */}
       <div className="flex items-center gap-3">
-        <span className={cn('w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0', dotColor)} />
-        <div>
-          <span className={cn('text-[11px] font-extrabold uppercase tracking-widest', textColor)}>
-            {label}
-          </span>
-          <span className={cn('text-[10px] ml-3 hidden sm:inline', subColor)}>
-            {sub}
-          </span>
-        </div>
+        <span className={cn('w-2 h-2 rounded-full animate-pulse flex-shrink-0', cfg.dot)} />
+        <span className={cn(
+          'inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border',
+          cfg.badge
+        )}>
+          {cfg.label}
+        </span>
+        <span className="text-xs text-slate-500 dark:text-slate-400 hidden md:inline">
+          {cfg.sub}
+        </span>
       </div>
 
-      {/* Right: key figures */}
-      <div className="flex items-center gap-5 md:gap-8">
-        <div className="text-center">
-          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Monthly Profit</div>
-          <div className={cn('text-sm font-extrabold font-mono', profitColor)}>
+      {/* Right: three key figures */}
+      <div className="flex items-center divide-x divide-slate-200 dark:divide-slate-700">
+        <div className="px-4 first:pl-0 text-right">
+          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Monthly Profit</div>
+          <div className={cn('text-sm font-extrabold font-mono',
+            result.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+          )}>
             {result.profit >= 0 ? '+' : ''}{(result.profit / 1e6).toFixed(2)}M USD
           </div>
         </div>
-        <div className="text-center hidden sm:block">
-          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Gas Consumed</div>
-          <div className="text-sm font-bold font-mono text-white">{result.gas.toFixed(2)} MMSCFD</div>
+        <div className="px-4 text-right hidden sm:block">
+          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Gas Consumed</div>
+          <div className="text-sm font-bold font-mono text-slate-700 dark:text-slate-200">{result.gas.toFixed(2)} MMSCFD</div>
         </div>
-        <div className="text-center hidden md:block">
-          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Ammonia</div>
-          <div className="text-sm font-bold font-mono text-white">{result.dailyAmm.toFixed(0)} MT/D</div>
+        <div className="px-4 text-right hidden md:block">
+          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Ammonia</div>
+          <div className="text-sm font-bold font-mono text-amber-500">{result.dailyAmm.toFixed(0)} MT/D</div>
         </div>
-        <div className="text-center hidden md:block">
-          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Methanol</div>
-          <div className="text-sm font-bold font-mono text-white">{result.dailyMeth.toFixed(0)} MT/D</div>
+        <div className="px-4 text-right hidden md:block">
+          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">Methanol</div>
+          <div className="text-sm font-bold font-mono text-purple-500">{result.dailyMeth.toFixed(0)} MT/D</div>
         </div>
       </div>
     </div>
@@ -895,7 +935,7 @@ function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</label>
+        <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</label>
         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-md px-2 py-1 border border-slate-300 dark:border-slate-700 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all">
           <input
             type="number"
@@ -904,7 +944,7 @@ function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
             step={step}
             className="w-16 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
           />
-          <span className="text-[10px] text-slate-500 font-normal select-none">{unit}</span>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal select-none">{unit}</span>
         </div>
       </div>
       <input
@@ -947,9 +987,9 @@ function KPICard({ title, value, sub, color, big }: {
   };
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-lg transition-colors duration-300">
-      <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{title}</h3>
-      <div className={cn("font-bold font-mono tracking-tight", big ? "text-3xl" : "text-xl", colors[color])}>{value}</div>
-      {sub && <p className="text-[10px] text-slate-500 dark:text-slate-600 mt-1 font-medium">{sub}</p>}
+      <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide">{title}</h3>
+      <div className={cn("font-bold font-mono tracking-tight", big ? "text-3xl" : "text-2xl", colors[color])}>{value}</div>
+      {sub && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{sub}</p>}
     </div>
   );
 }
@@ -957,9 +997,9 @@ function KPICard({ title, value, sub, color, big }: {
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
-      <div className="flex items-center gap-2 mb-6">
-        <div className="w-1 h-4 rounded-full" style={{ backgroundColor: GPIC_GREEN }} />
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">{title}</h3>
+      <div className="flex items-center gap-2 mb-5">
+        <div className="w-1 h-5 rounded-full" style={{ backgroundColor: GPIC_GREEN }} />
+        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 tracking-normal">{title}</h3>
       </div>
       {children}
     </div>
@@ -969,7 +1009,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 function BreakdownItem({ label, value, color, max }: { label: string; value: number; color: string; max: number }) {
   return (
     <div className="space-y-1.5">
-      <div className="flex justify-between text-[11px]">
+      <div className="flex justify-between text-xs">
         <span className="text-slate-500 dark:text-slate-400">{label}</span>
         <span className="text-slate-900 dark:text-slate-200 font-mono font-semibold">{fmtM(value)}</span>
       </div>
@@ -984,12 +1024,12 @@ function GasItem({ label, value, total, color }: { label: string; value: number;
   const pct = total > 0 ? (value / total) * 100 : 0;
   return (
     <div className="text-center space-y-2">
-      <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</div>
+      <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{label}</div>
       <div className="text-sm font-mono font-bold text-slate-900 dark:text-slate-200">{fmt(value / 1e6, 2)}M</div>
       <div className="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mx-2">
         <div className={cn("h-full rounded-full transition-all duration-500", color)} style={{ width: `${pct}%` }} />
       </div>
-      <div className="text-[10px] text-slate-500 dark:text-slate-600 font-mono">{fmt(pct, 1)}%</div>
+      <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">{fmt(pct, 1)}%</div>
     </div>
   );
 }
@@ -998,12 +1038,12 @@ function MarginRow({ name, vc, price, vol, color }: { name: string; vc: number; 
   const margin = price - vc;
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-      <td className={cn("py-4 font-semibold", color)}>{name}</td>
-      <td className="py-4 text-right font-mono text-slate-500 dark:text-slate-400">${fmt(vc, 1)}</td>
-      <td className="py-4 text-right font-mono text-slate-500 dark:text-slate-400">${fmt(price, 1)}</td>
-      <td className={cn("py-4 text-right font-mono font-bold", margin >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500')}>${fmt(margin, 1)}</td>
-      <td className="py-4 text-right font-mono text-slate-500 dark:text-slate-400">{fmt(vol, 0)}</td>
-      <td className="py-4 text-right font-mono text-slate-900 dark:text-slate-200 font-semibold">{fmtM(margin * vol)}</td>
+      <td className={cn("py-3.5 text-[13px] font-semibold", color)}>{name}</td>
+      <td className="py-3.5 text-right text-[13px] font-mono text-slate-500 dark:text-slate-400">${fmt(vc, 1)}</td>
+      <td className="py-3.5 text-right text-[13px] font-mono text-slate-500 dark:text-slate-400">${fmt(price, 1)}</td>
+      <td className={cn("py-3.5 text-right text-[13px] font-mono font-bold", margin >= 0 ? 'text-emerald-600 dark:text-emerald-500' : 'text-rose-600 dark:text-rose-500')}>${fmt(margin, 1)}</td>
+      <td className="py-3.5 text-right text-[13px] font-mono text-slate-500 dark:text-slate-400">{fmt(vol, 0)}</td>
+      <td className="py-3.5 text-right text-[13px] font-mono text-slate-700 dark:text-slate-200 font-semibold">{fmtM(margin * vol)}</td>
     </tr>
   );
 }
@@ -1013,7 +1053,7 @@ function SettingsCard({ title, icon, children }: { title: string; icon: React.Re
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
       <div className="flex items-center gap-2 mb-5">
         {icon}
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">{title}</h3>
+        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{title}</h3>
       </div>
       <div className="space-y-4">{children}</div>
     </div>
@@ -1024,7 +1064,7 @@ function VCRow({ label, value, total, color }: { label: string; value: number; t
   const pct = total > 0 ? (value / total) * 100 : 0;
   return (
     <div className="space-y-1">
-      <div className="flex justify-between text-[11px]">
+      <div className="flex justify-between text-xs">
         <span className="text-slate-500 dark:text-slate-400">{label}</span>
         <span className="text-slate-700 dark:text-slate-300 font-mono">
           ${value.toFixed(2)} <span className="text-slate-400 dark:text-slate-600">({pct.toFixed(1)}%)</span>
@@ -1042,7 +1082,7 @@ function SettingsInput({ label, value, onChange, step = 1, decimals = 2 }: {
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <label className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0">{label}</label>
+      <label className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{label}</label>
       <input
         type="number"
         value={Number(value.toFixed(decimals))}
