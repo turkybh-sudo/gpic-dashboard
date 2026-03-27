@@ -42,7 +42,6 @@ import {
   ContributionBar,
   CostBreakdownCard,
   LegendPill,
-  MetricRailCard,
   MiniAsideStat,
   SettingsGroupCard,
   SettingsInput,
@@ -328,11 +327,12 @@ export default function App() {
       variableCost: result.vcUrea,
     },
   ];
-  const heroMetrics = [
-    { label: 'Ammonia', value: `${fmt(result.K11, 0)} MT/mo` },
-    { label: 'Methanol', value: `${fmt(result.D5, 0)} MT/mo` },
-    { label: 'Urea', value: `${fmt(result.K9, 0)} MT/mo` },
-  ];
+  const heroProducts = productRows.map((row) => ({
+    label: row.label,
+    daily: `${fmt(row.daily, 1)} MT/D`,
+    monthly: `${fmt(row.monthly, 0)} ${row.monthlyLabel}`,
+    tone: row.tone,
+  }));
 
   const capacityData = productRows.map((row) => ({
     ...row,
@@ -579,29 +579,14 @@ export default function App() {
           </header>
           {tab === 'optimizer' && (
             <div className="space-y-5 md:space-y-6">
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.32fr)_minmax(0,0.68fr)]">
-                <ExecutiveHero
-                  profit={result.profit}
-                  profitTone={profitTone}
-                  scenarioTone={scenarioTone}
-                  scenarioLabel={scenarioLabel}
-                  metrics={heroMetrics}
-                  fmtM={fmtM}
-                />
-                <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
-                  {productRows.map((row) => (
-                    <React.Fragment key={row.key}>
-                      <MetricRailCard
-                        title={row.label}
-                        tone={row.tone}
-                        value={`${fmt(row.daily, 1)} MT/D`}
-                        subtitle={`${fmt(row.monthly, 0)} ${row.monthlyLabel}`}
-                        helper={`${fmtPercent((row.daily / row.capacity) * 100, 1)} utilization`}
-                      />
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
+              <ExecutiveHero
+                profit={result.profit}
+                profitTone={profitTone}
+                scenarioTone={scenarioTone}
+                scenarioLabel={scenarioLabel}
+                products={heroProducts}
+                fmtM={fmtM}
+              />
 
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,0.82fr)]">
                 <SurfaceCard eyebrow="Daily production" title="Production profile">
