@@ -309,26 +309,25 @@ export function CostBreakdownCard({
   fmt: (value: number | null, digits?: number) => string;
 }) {
   return (
-    <SurfaceCard
-      eyebrow="Cost architecture"
-      title={title}
-      className="flex h-full flex-col overflow-hidden"
-      bodyClassName="flex flex-1 flex-col"
-    >
-      <div className="flex h-full flex-col gap-3">
-        {rows.map((row) => (
-          <React.Fragment key={row.label}>
-            <CostRow label={row.label} value={row.value} total={total} tone={tone} fmt={fmt} fmtPercent={(value, digits = 1) => `${value.toFixed(digits)}%`} />
-          </React.Fragment>
-        ))}
-        <div className="mt-6 rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
-          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total variable cost</p>
-          <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[tone].strongText)}>
-            ${fmt(total, 2)}/MT
-          </p>
+    <section className="flex h-full flex-col overflow-hidden rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] shadow-[var(--shadow-md)]">
+      <div className="flex flex-1 flex-col p-5 md:p-6">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Cost architecture</p>
+        <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h3>
+        <div className="mt-5 flex flex-1 flex-col gap-3">
+          {rows.map((row) => (
+            <React.Fragment key={row.label}>
+              <CostRow label={row.label} value={row.value} total={total} tone={tone} fmt={fmt} fmtPercent={(value, digits = 1) => `${value.toFixed(digits)}%`} />
+            </React.Fragment>
+          ))}
         </div>
       </div>
-    </SurfaceCard>
+      <div className="border-t border-[var(--border-soft)] bg-[var(--surface-subtle)] px-5 py-4 md:px-6 md:py-5">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total variable cost</p>
+        <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[tone].strongText)}>
+          ${fmt(total, 2)}/MT
+        </p>
+      </div>
+    </section>
   );
 }
 
