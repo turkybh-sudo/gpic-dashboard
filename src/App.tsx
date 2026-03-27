@@ -261,9 +261,9 @@ export default function App() {
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Model v32: Component-level VC — Gas, Power (GT/Import), HP/MP/LP Steam, SW, FCW, Demin, CDR, UF85.
-                Dynamic alpha scales ammonia capacity with methanol load.
-              </p>
+  Model v32: Component-level VC — Gas, Power (GT/Import), HP/MP/LP Steam, SW, FCW, Demin, CDR, UF85.
+  Minimum methanol load is user-defined; alpha remains fixed and is not normalized to that minimum.
+</p>
             </div>
           </div>
         </div>
