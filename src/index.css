@@ -1,1 +1,21 @@
 @import "tailwindcss";
+
+:root {
+  --gpic-green: #006341;
+  --gpic-navy: #001A71;
+  --gpic-red: #E70033;
+  --font-brand: 'Montserrat', 'Arial', sans-serif;
+}
+
+body {
+  font-family: var(--font-brand);
+}
+
+@media print {
+  .no-print { display: none !important; }
+  aside { display: none !important; }
+  header { display: none !important; }
+  .status-banner { display: none !important; }
+  main { padding-left: 0 !important; }
+  body { background: white !important; color: black !important; }
+}
