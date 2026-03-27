@@ -4,52 +4,11 @@
   --gpic-green: #006341;
   --gpic-navy: #001A71;
   --gpic-red: #E70033;
-  --font-brand: 'Inter', 'Segoe UI', 'Montserrat', 'Arial', sans-serif;
-  --surface: #f3f6fa;
-  --surface-elev: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --border-soft: #d9e2ec;
-  --focus-ring: #0ea5a4;
+  --font-brand: 'Montserrat', 'Arial', sans-serif;
 }
 
 body {
   font-family: var(--font-brand);
-  background: var(--surface);
-  color: var(--text-primary);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface: #020617;
-    --surface-elev: #0b1220;
-    --text-primary: #e2e8f0;
-    --text-secondary: #94a3b8;
-    --border-soft: #1f2937;
-  }
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #94a3b8 transparent;
-}
-
-*:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--focus-ring) 60%, white 40%);
-  outline-offset: 2px;
-}
-
-.executive-shell {
-  background:
-    radial-gradient(circle at 10% -5%, rgb(15 23 42 / 0.03), transparent 30%),
-    radial-gradient(circle at 95% -10%, rgb(2 132 199 / 0.04), transparent 28%),
-    var(--surface);
-}
-
-.surface-card {
-  background: var(--surface-elev);
-  border: 1px solid var(--border-soft);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 12px 24px rgb(15 23 42 / 0.03);
 }
 
 @media print {
