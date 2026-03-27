@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 
 export const BASE_DEFAULTS = {
   K7: 0.57,                // NH3→Urea specific consumption (MT/MT) — Updated!K7
-  alpha: 0.1092174534,     // K10 coefficient for Case A (PSA synergy)
+  alpha: 0.1092174534,     // Legacy — now derived dynamically from methMin_MTD, kept for reference only
   C33_coeff: 1.660263,     // CO2 capacity coefficient
 
   // ─── Specific Gas Consumption (Nm3/MT of product) ───
@@ -110,7 +110,8 @@ export const BASE_DEFAULTS = {
   // CDR shutdown penalties
   ammPenalty_B: 15,        // $/MT extra ammonia VC in Case B
   ammCapLoss_B: 5580,      // MT/mo ammonia capacity loss (Case B)
-  ammCapLoss_A: 4247,      // MT/mo ammonia capacity loss (Case A)
+  ammCapLoss_A: 4247,      // MT/mo ammonia capacity loss at minimum methanol load
+  methMin_MTD: 740,        // Minimum methanol production when GT running (MT/D)
 
   // Fixed costs
   FC_total: 8279075.12,
@@ -509,8 +510,20 @@ export function solveLP(
     // K10 = amm_sale + K7 * urea
     // Constraint: K10 <= maxAmm*days - capLoss + alpha * meth
     // Rearranged: amm_sale + K7 * urea - alpha * meth <= maxAmm*days - capLoss
-    const alphaTerm = caseType === 'A' ? s.alpha : 0;
-    const ammCapLimit = (maxAmm * days) - capLoss;
+    // Dynamic alpha: slope defined by two anchors —
+    //   at methMin_MTD → full ammCapLoss_A loss
+    //   at maxMeth     → zero loss
+    // slope = ammCapLoss_A / ((maxMeth - methMin_MTD) * days)
+    const dynamicAlpha = (caseType === 'A' && maxMeth > s.methMin_MTD)
+      ? s.ammCapLoss_A / ((maxMeth - s.methMin_MTD) * days)
+      : 0;
+
+    // Adjust RHS: K10 + K7*urea - dynamicAlpha*meth <= limit
+    // Derived from: K10 <= maxAmm*days - ammCapLoss_A + dynamicAlpha*(D5 - methMin_MTD*days)
+    // Rearranged:   K10 - dynamicAlpha*meth <= maxAmm*days - ammCapLoss_A - dynamicAlpha*methMin_MTD*days
+    const ammCapLimit = caseType === 'A'
+      ? (maxAmm * days) - capLoss - dynamicAlpha * s.methMin_MTD * days
+      : (maxAmm * days) - capLoss;
 
     // Urea Capacity Constraint (Case B special):
     // K9 <= C33_coeff * K10
@@ -552,7 +565,7 @@ export function solveLP(
         meth: { 
           profit: methP - vc.meth, 
           gas: coeffMethGas, 
-          ammCap: -alphaTerm,
+          ammCap: -dynamicAlpha,
           methCap: 1,
           methMin: 1
         },
