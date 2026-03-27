@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { solve, type Model } from 'yalps';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BASE MODEL CONSTANTS — sourced cell-by-cell from Excel v31
@@ -15,7 +16,6 @@ export const BASE_DEFAULTS = {
   SGC_meth: 1153.1574,    // Methanol SGC — VC!F4 = 786.7134 + 366.444
 
   // ─── Boiler NG Consumption (Nm3/MT) — Sheet1 H33:H35 ───
-  // Used in Updated!C15 = D5×Sheet1!H34 + Sheet1!H33×K10 + K9×Sheet1!H35
   boiler_amm: 237.358,    // Sheet1!H33
   boiler_meth: 110.047,   // Sheet1!H34
   boiler_urea: 104.169,   // Sheet1!H35
@@ -37,81 +37,72 @@ export const BASE_DEFAULTS = {
   bhd_to_usd: 2.65,               // Conversion factor BHD→USD
 
   // ─── Utility Prices (Linear with Gas Price) ───
-  // Derived from user data (Updated Table):
-  // SW: (1, 0.0024) to (10, 0.015181)
-  // FCW: (1, 0.004656) to (10, 0.027416)
-  // Demin: (1, 0.002673) to (10, 0.303551)
-  
   SW_slope: 0.00142011,
   SW_intercept: 0.00097989,
-  
   FCW_slope: 0.00252889,
   FCW_intercept: 0.00212711,
-  
   Demin_slope: 0.03343089,
   Demin_intercept: -0.03075789,
 
-  MEW_power_price: 0.0775195445499881,          // GPU!I16 — MEW Power $/kWh (=0.032 BHD×2.65)
+  MEW_power_price: 0.0775195445499881,  // GPU!I16 — MEW Power $/kWh
 
-  // ─── Ammonia Power Parameters (from VC sheet) ───
+  // ─── Ammonia Power Parameters ───
   amm_GT_gen: 293.5,            // VC!C9 — GT generated power (MWH)
   amm_Import_gen: 112.4,        // VC!C10 — Imported power (MWH)
-  amm_total_power_annual: 20781000, // Total ammonia power kWh/year → C13 = /12
-  amm_prod_annual: 459788,      // Total ammonia production MT/year → C2 = /12
+  amm_total_power_annual: 20781000,
+  amm_prod_annual: 459788,
   GT_nm3_per_kwh: 0.503,        // VC!C18 — GT gas consumption per kWh
 
   // ─── Ammonia Utility Specific Consumptions ───
-  amm_HP_steam: 2.3963,    // VC!C23 — Ton/MT
-  amm_HP_nm3_per_ton: 105, // VC!C24 — Nm3 gas per Ton of HP steam
-  amm_SW: 225.9414,        // VC!C26 — m3/MT
-  amm_FCW: 136.1038,       // VC!C29 — m3/MT
-  amm_Demin: 3.3026,       // VC!C32 — m3/MT
+  amm_HP_steam: 2.3963,
+  amm_HP_nm3_per_ton: 105,
+  amm_SW: 225.9414,
+  amm_FCW: 136.1038,
+  amm_Demin: 3.3026,
 
   // ─── Methanol Power Parameters ───
-  meth_total_power_annual: 19745300, // kWh/year → F13 = /12
-  meth_prod_annual: 445757,     // MT/year → F2 = /12
-
-  // ─── Methanol Utility Specific Consumptions ───
-  meth_HP_steam: 0.840818552609506,  // VC!F23 — Ton/MT
-  meth_SW: 65.5065,        // VC!F26 — m3/MT
-  meth_FCW: 48.5531,       // VC!F29 — m3/MT
-  meth_Demin: 1.3181,      // VC!F32 — m3/MT
+  meth_total_power_annual: 19745300,
+  meth_prod_annual: 445757,
+  meth_HP_steam: 0.840818552609506,
+  meth_SW: 65.5065,
+  meth_FCW: 48.5531,
+  meth_Demin: 1.3181,
 
   // ─── Urea Parameters ───
-  urea_amm_spec: 0.5696,  // VC!K3 — MT ammonia per MT urea
-  urea_power: 83.5573,    // VC!K8 — kWh/MT imported power
+  urea_amm_spec: 0.5696,
+  urea_power: 83.5573,
 
-  // CDR (CO2 recovery) — VC!K12 etc
-  CDR_co2: 36.1942,       // VC!K12 — Nm3 CO2/MT urea
-  CDR_SW: 0.2032,         // VC!K13 — m3 SW per Nm3 CO2
-  CDR_FCW: 0.0042,        // VC!K17 — m3 FCW per Nm3 CO2
-  CDR_power: 0.00762,     // VC!K21 — kWh per Nm3 CO2
-  CDR_LP_steam: 0.0019,   // VC!K25 — Ton LP steam per Nm3 CO2
-  CDR_LP_669: 669,        // Numerator for eq HH calc
-  CDR_LP_810: 810,        // Denominator for eq HH calc
+  // CDR (CO2 recovery)
+  CDR_co2: 36.1942,
+  CDR_SW: 0.2032,
+  CDR_FCW: 0.0042,
+  CDR_power: 0.00762,
+  CDR_LP_steam: 0.0019,
+  CDR_LP_669: 669,
+  CDR_LP_810: 810,
 
   // HP & MP Steam
-  urea_HP_steam: 1.1811,  // VC!K30 — Ton/MT
-  urea_MP_steam: 0.0415,  // VC!K34 — Ton/MT
-  MP_752_9: 752.9,        // MP equiv numerator
-  MP_809_4: 809.4,        // MP equiv denominator
+  urea_HP_steam: 1.1811,
+  urea_MP_steam: 0.0415,
+  MP_752_9: 752.9,
+  MP_809_4: 809.4,
 
   // SW / FCW / Demin for urea
-  urea_SW: 18.9793,       // VC!K38 — m3/MT
-  urea_FCW: 94.0777,      // VC!K41 — m3/MT
-  urea_Demin: 0.0749,     // VC!K44 — m3/MT
+  urea_SW: 18.9793,
+  urea_FCW: 94.0777,
+  urea_Demin: 0.0749,
 
   // UF85 (formaldehyde)
-  UF85_cons: 0.0094572,   // VC!K47 — MT UF85 per MT urea
-  UF85_meth_cons: 0.7126, // VC!K48 — MT methanol per MT UF85
-  UF85_FCW: 72.3776,      // VC!K51 — m3 FCW per MT UF85
-  UF85_power: 277.4354,   // VC!K54 — kWh per MT UF85
+  UF85_cons: 0.0094572,
+  UF85_meth_cons: 0.7126,
+  UF85_FCW: 72.3776,
+  UF85_power: 277.4354,
 
   // CDR shutdown penalties
-  ammPenalty_B: 15,        // $/MT extra ammonia VC in Case B
-  ammCapLoss_B: 5580,      // MT/mo ammonia capacity loss (Case B)
+  ammPenalty_B: 15,
+  ammCapLoss_B: 5580,
   ammCapLoss_A: 4247,      // MT/mo ammonia capacity loss at minimum methanol load
-  methMin_MTD: 740,        // Minimum methanol production when GT running (MT/D)
+  methMin_MTD: 740,        // Minimum methanol production when GT running (MT/D) — user settable
 
   // Fixed costs
   FC_total: 8279075.12,
@@ -181,9 +172,6 @@ export interface LPResult {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GAS COST CALCULATION
-// Exact replication of GAS PRICE & UTILITIES sheet:
-//   B20 = (B21/C21) × C22     [BHD/Nm3]
-//   I14 = B20 × 2.65          [USD/Nm3]
 // ═══════════════════════════════════════════════════════════════════════════════
 function gasUsdPerNm3(gasPrice: number, s: Settings): number {
   return gasPrice * (s.gas_bhd_per_nm3_base / s.gas_base_mmbtu) * s.bhd_to_usd;
@@ -194,10 +182,10 @@ function gasUsdPerNm3(gasPrice: number, s: Settings): number {
 // C36 = C7 + C21 + C25 + C28 + C31 + C34
 // ═══════════════════════════════════════════════════════════════════════════════
 function calcAmmVC(
-  gasCost: number, 
-  swPrice: number, 
-  fcwPrice: number, 
-  deminPrice: number, 
+  gasCost: number,
+  swPrice: number,
+  fcwPrice: number,
+  deminPrice: number,
   s: Settings,
   gtRunning: boolean = true
 ): VCBreakdown {
@@ -210,6 +198,7 @@ function calcAmmVC(
   const prodMonth = s.amm_prod_annual / 12;               // C2
   let powerVC: number;
   if (gtRunning) {
+    // Power ratio C11 = C9/C10
     const powerRatio = s.amm_GT_gen / s.amm_Import_gen;
     const importPower = totalPowerMonth / powerRatio;        // C14
     const importCost = importPower * s.MEW_power_price;      // C16
@@ -218,7 +207,7 @@ function calcAmmVC(
     const gtCost = gtCostPerKwh * gtPower;                   // C20
     powerVC = (gtCost + importCost) / prodMonth;             // C21
   } else {
-    // GT off: all power from MEW import
+    // GT off — all power from MEW import at full rate
     powerVC = (totalPowerMonth * s.MEW_power_price) / prodMonth;
   }
 
@@ -254,10 +243,10 @@ function calcAmmVC(
 // F36 = F7 + F21 + F25 + F28 + F31 + F34
 // ═══════════════════════════════════════════════════════════════════════════════
 function calcMethVC(
-  gasCost: number, 
-  swPrice: number, 
-  fcwPrice: number, 
-  deminPrice: number, 
+  gasCost: number,
+  swPrice: number,
+  fcwPrice: number,
+  deminPrice: number,
   s: Settings,
   gtRunning: boolean = true
 ): VCBreakdown {
@@ -265,6 +254,7 @@ function calcMethVC(
   const gasVC = s.SGC_meth * gasCost;
 
   // ── Power VC (F21) ──
+  // Same GT/Import ratio as ammonia (same GT and import capacity)
   const totalPowerMonth = s.meth_total_power_annual / 12;  // F13
   const prodMonth = s.meth_prod_annual / 12;               // F2
   let powerVC: number;
@@ -277,7 +267,7 @@ function calcMethVC(
     const gtCost = gtCostPerKwh * gtPower;                    // F20
     powerVC = (gtCost + importCost) / prodMonth;              // F21
   } else {
-    // GT off: all power from MEW import
+    // GT off — all power from MEW import at full rate
     powerVC = (totalPowerMonth * s.MEW_power_price) / prodMonth;
   }
 
@@ -306,12 +296,12 @@ function calcMethVC(
 // K58 = K6+K10+K16+K20+K24+K29+K33+K37+K40+K43+K46+K50+K53+K56
 // ═══════════════════════════════════════════════════════════════════════════════
 function calcUreaVC(
-  gasCost: number, 
-  ammVC: number, 
-  methVC: number, 
-  swPrice: number, 
-  fcwPrice: number, 
-  deminPrice: number, 
+  gasCost: number,
+  ammVC: number,
+  methVC: number,
+  swPrice: number,
+  fcwPrice: number,
+  deminPrice: number,
   s: Settings
 ): UreaVCBreakdown {
   // ── Ammonia cost component (K6) ──
@@ -359,9 +349,9 @@ function calcUreaVC(
   const mpSteamVC = mpNm3 * gasCost;
 
   // ── Utilities ──
-  const swVC = s.urea_SW * swPrice;     // K40
-  const fcwVC = s.urea_FCW * fcwPrice;   // K43
-  const deminVC = s.urea_Demin * deminPrice; // K46
+  const swVC    = s.urea_SW    * swPrice;     // K40
+  const fcwVC   = s.urea_FCW   * fcwPrice;    // K43
+  const deminVC = s.urea_Demin * deminPrice;  // K46
 
   // ── UF85 (K50, K53, K56) ──
   // K50 = K47 × K48 × K49 (K49 = METH total VC = F36)
@@ -397,20 +387,20 @@ function calcUreaVC(
 // ═══════════════════════════════════════════════════════════════════════════════
 export function calcVC(gasPrice: number, s: Settings, gtRunning: boolean = true) {
   const gasCost = gasUsdPerNm3(gasPrice, s);
-  
+
   // Calculate dynamic utility prices
-  const swPrice = s.SW_slope * gasPrice + s.SW_intercept;
-  const fcwPrice = s.FCW_slope * gasPrice + s.FCW_intercept;
+  const swPrice    = s.SW_slope    * gasPrice + s.SW_intercept;
+  const fcwPrice   = s.FCW_slope   * gasPrice + s.FCW_intercept;
   const deminPrice = s.Demin_slope * gasPrice + s.Demin_intercept;
 
-  const ammBreakdown = calcAmmVC(gasCost, swPrice, fcwPrice, deminPrice, s, gtRunning);
+  const ammBreakdown  = calcAmmVC(gasCost, swPrice, fcwPrice, deminPrice, s, gtRunning);
   const methBreakdown = calcMethVC(gasCost, swPrice, fcwPrice, deminPrice, s, gtRunning);
   const ureaBreakdown = calcUreaVC(gasCost, ammBreakdown.total, methBreakdown.total, swPrice, fcwPrice, deminPrice, s);
 
   return {
     amm_A: ammBreakdown.total,
     amm_B: ammBreakdown.total + s.ammPenalty_B,
-    meth: methBreakdown.total,
+    meth:  methBreakdown.total,
     urea_A: ureaBreakdown.total,
     urea_B: ureaBreakdown.total + s.K7 * s.ammPenalty_B,
     ammBreakdown,
@@ -427,30 +417,30 @@ export function calcGas(
   isShutdown: boolean, s: Settings, gtRunning: boolean = true
 ) {
   const sgc_amm = isShutdown ? s.SGC_amm_B : s.SGC_amm_A;
-  const amm_gas = sgc_amm * K10;        // C12 = C11 × K10
-  const meth_gas = s.SGC_meth * D5;     // D12 = D11 × D5
+  const amm_gas    = sgc_amm * K10;          // C12 = C11 × K10
+  const meth_gas   = s.SGC_meth * D5;        // D12 = D11 × D5
   const boiler_gas = s.boiler_meth * D5 + s.boiler_amm * K10 + s.boiler_urea * K9; // C15
-  const gt_gas = gtRunning ? s.GT_gas_per_day * days : 0;  // C14 — zero if GT off
-  const flare_gas = s.flare_gas_per_day * days; // C16
+  const gt_gas     = gtRunning ? s.GT_gas_per_day * days : 0;  // C14 — zero if GT off
+  const flare_gas  = s.flare_gas_per_day * days;               // C16
 
-  const total_nm3 = amm_gas + meth_gas + gt_gas + boiler_gas + flare_gas; // C18
-  const mmscfd_base = total_nm3 * s.NM3_to_MMSCFD / (1e6 * days);        // C21
+  const total_nm3  = amm_gas + meth_gas + gt_gas + boiler_gas + flare_gas; // C18
+  const mmscfd_base = total_nm3 * s.NM3_to_MMSCFD / (1e6 * days);          // C21
 
   return {
     mmscfd_base,
     total_nm3,
     breakdown: {
-      ammonia_nm3: amm_gas,
+      ammonia_nm3:  amm_gas,
       methanol_nm3: meth_gas,
-      boiler_nm3: boiler_gas,
-      gt_nm3: gt_gas,
-      flare_nm3: flare_gas,
+      boiler_nm3:   boiler_gas,
+      gt_nm3:       gt_gas,
+      flare_nm3:    flare_gas,
     },
   };
 }
 
 function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings, gtRunning: boolean = true): number {
-  if (!gtRunning) return mmscfd_base;  // No GT topup when shutdown
+  if (!gtRunning) return mmscfd_base;  // No GT topup when GT is shutdown
   const headroom = maxGas - mmscfd_base;
   if (headroom > 0) {
     return mmscfd_base + Math.min(headroom, s.GT_additional_max);
@@ -461,8 +451,6 @@ function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings, gtR
 // ═══════════════════════════════════════════════════════════════════════════════
 // LP SOLVER — Simplex (YALPS)
 // ═══════════════════════════════════════════════════════════════════════════════
-import { solve, type Model } from 'yalps';
-
 export function solveLP(
   ammP: number,
   methP: number,
@@ -479,13 +467,13 @@ export function solveLP(
 ): LPResult {
   const vc = calcVC(gasP, s, gtRunning);
   const K1 = days;
-  
+
   // Constraints constants
   // maxGas is in MMSCFD. Convert to Total Nm3 for the period to match consumption calc.
   // Formula: mmscfd = total_nm3 * factor / (1e6 * days)
   // Inverse: total_nm3 = mmscfd * 1e6 * days / factor
   const maxGasTotal = maxGas * 1e6 * days / s.NM3_to_MMSCFD;
-  
+
   // Fixed gas loads: GT is zero when shutdown, flare always present
   const fixedGas = (gtRunning ? s.GT_gas_per_day * days : 0) + s.flare_gas_per_day * days;
   const availGasForProd = maxGasTotal - fixedGas;
@@ -497,38 +485,33 @@ export function solveLP(
     const vcAmm = isShutdown ? vc.amm_B : vc.amm_A;
     const vcUrea = isShutdown ? vc.urea_B : vc.urea_A;
 
-    // ─── Coefficients ───
-    
+    // ─── Gas Coefficients ───
     // Gas Constraint:
-    // Total Gas = amm_sale * (SGC + Boiler) + meth * (SGC + Boiler) + urea * (K7*SGC + K7*Boiler + Boiler_Urea) + Fixed
+    // Total Gas = amm_sale*(SGC+Boiler) + meth*(SGC+Boiler) + urea*(K7*SGC+K7*Boiler+Boiler_Urea) + Fixed
     // We constrain: Variable_Gas <= availGasForProd
-    const coeffAmmGas = sgc_amm + s.boiler_amm;
+    const coeffAmmGas  = sgc_amm + s.boiler_amm;
     const coeffMethGas = s.SGC_meth + s.boiler_meth;
     const coeffUreaGas = s.K7 * sgc_amm + s.K7 * s.boiler_amm + s.boiler_urea;
 
-    // Ammonia Capacity Constraint:
-    // K10 = amm_sale + K7 * urea
-    // Constraint: K10 <= maxAmm*days - capLoss + alpha * meth
-    // Rearranged: amm_sale + K7 * urea - alpha * meth <= maxAmm*days - capLoss
-    // Dynamic alpha: slope defined by two anchors —
-    //   at methMin_MTD → full ammCapLoss_A loss
-    //   at maxMeth     → zero loss
+    // ─── Dynamic Alpha (replaces static alpha) ───
+    // Slope defined by two anchors:
+    //   at methMin_MTD → full ammCapLoss_A loss (user-defined, e.g. 137 MT/D)
+    //   at maxMeth (100% load) → zero loss (full capacity recovered)
     // slope = ammCapLoss_A / ((maxMeth - methMin_MTD) * days)
+    // If user raises methMin_MTD (e.g. 840 instead of 740), slope steepens automatically.
     const dynamicAlpha = (caseType === 'A' && maxMeth > s.methMin_MTD)
       ? s.ammCapLoss_A / ((maxMeth - s.methMin_MTD) * days)
       : 0;
 
-    // Adjust RHS: K10 + K7*urea - dynamicAlpha*meth <= limit
+    // ─── Ammonia Capacity Constraint ───
+    // K10 + K7*urea - dynamicAlpha*meth <= limit
     // Derived from: K10 <= maxAmm*days - ammCapLoss_A + dynamicAlpha*(D5 - methMin_MTD*days)
     // Rearranged:   K10 - dynamicAlpha*meth <= maxAmm*days - ammCapLoss_A - dynamicAlpha*methMin_MTD*days
     const ammCapLimit = caseType === 'A'
       ? (maxAmm * days) - capLoss - dynamicAlpha * s.methMin_MTD * days
       : (maxAmm * days) - capLoss;
 
-    // Urea Capacity Constraint (Case B special):
-    // K9 <= C33_coeff * K10
-    // urea <= C33 * (amm_sale + K7 * urea)
-    // urea * (1 - C33 * K7) - C33 * amm_sale <= 0
+    // ─── Urea Capacity Constraint (Case B) ───
     const ureaCapB_UreaCoeff = caseType === 'B' ? (1 - s.C33_coeff * s.K7) : 0;
     const ureaCapB_AmmCoeff = caseType === 'B' ? -s.C33_coeff : 0;
 
@@ -538,17 +521,17 @@ export function solveLP(
       ammCap: { max: ammCapLimit },
       methCap: { max: maxMeth * days },
       ureaCap: { max: maxUrea * days },
-      methMin: { min: 0 }, // Default
+      methMin: { min: 0 },
       ...(caseType === 'B' ? { ureaCapB: { max: 0 } } : {})
     };
 
-    // ─── Case Specific Bounds ───
+    // ─── Case Specific Methanol Bounds ───
     if (caseType === 'A') {
-      // Methanol >= 60%
-      constraints.methMin = { min: 0.6 * maxMeth * days };
+      // Methanol >= user-defined minimum load
+      constraints.methMin = { min: s.methMin_MTD * days };
     } else {
-      // Methanol <= 60%
-      constraints.methCap = { max: 0.6 * maxMeth * days };
+      // Methanol <= user-defined minimum load (Case B = below running threshold)
+      constraints.methCap = { max: s.methMin_MTD * days };
     }
 
     // ─── Model Definition ───
@@ -556,22 +539,22 @@ export function solveLP(
       direction: 'maximize',
       objective: 'profit',
       variables: {
-        amm_sale: { 
-          profit: ammP - vcAmm, 
-          gas: coeffAmmGas, 
+        amm_sale: {
+          profit: ammP - vcAmm,
+          gas: coeffAmmGas,
           ammCap: 1,
           ureaCapB: ureaCapB_AmmCoeff
         },
-        meth: { 
-          profit: methP - vc.meth, 
-          gas: coeffMethGas, 
+        meth: {
+          profit: methP - vc.meth,
+          gas: coeffMethGas,
           ammCap: -dynamicAlpha,
           methCap: 1,
           methMin: 1
         },
-        urea: { 
-          profit: ureaP - vcUrea, 
-          gas: coeffUreaGas, 
+        urea: {
+          profit: ureaP - vcUrea,
+          gas: coeffUreaGas,
           ammCap: s.K7,
           ureaCap: 1,
           ureaCapB: ureaCapB_UreaCoeff
@@ -580,34 +563,24 @@ export function solveLP(
       constraints: constraints
     };
 
-    // ─── Solve ───
     const result = solve(model);
-
     if (result.status !== 'optimal') return null;
 
-    // Convert variables array to object for easy access
     const vars: Record<string, number> = {};
-    result.variables.forEach(([key, val]) => {
-      vars[key] = val;
-    });
+    result.variables.forEach(([key, val]) => { vars[key] = val; });
 
     const amm_sale = vars.amm_sale || 0;
     const meth = vars.meth || 0;
     const urea = vars.urea || 0;
 
-    // ─── Reconstruct State ───
     const K10 = amm_sale + s.K7 * urea;
     const K9 = urea;
     const D5 = meth;
     const K4 = maxAmm * days;
     const K11 = amm_sale;
-    
-    // Validate K11 (should be >= 0 from solver, but good to check)
+
     if (K11 < -1e-9) return null;
 
-    // Calculate final gas and profit using the standard function to ensure consistency
-    // (Solver optimized profit, but we want the detailed object structure)
-    
     return makeResult(caseType, D5, K10, K9, K4, isShutdown, vcAmm, vcUrea);
   };
 
@@ -619,14 +592,11 @@ export function solveLP(
   ): LPResult | null => {
     const K8 = s.K7 * K9;
     const K11 = K10 - K8;
-    
-const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
-    const gasAfterGT = applyGTAdditional(gasCalc.mmscfd_base, maxGas, s, gtRunning);;
-    
+
+    const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
+    const gasAfterGT = applyGTAdditional(gasCalc.mmscfd_base, maxGas, s, gtRunning);
+
     // Hard limit check (solver should handle this, but applyGTAdditional might add more)
-    // If base gas > maxGas, solver would have failed. 
-    // If base gas <= maxGas, applyGTAdditional ensures result <= maxGas (or maxGas + tiny bit if logic allows, but here it caps)
-    // We keep the check just in case.
     if (gasAfterGT > maxGas * 1.001) return null;
 
     const profit = (ammP - vcAmm) * K11 + (methP - vc.meth) * D5 + (ureaP - vcUrea) * K9 - s.FC_total;
@@ -653,7 +623,7 @@ const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
     const resA = solveCase('A', false);
     return resA || {
       caseType: 'Infeasible-A', D5: 0, K10: 0, K9: 0, K8: 0, K11: 0, K4: 0,
-      gas: 0, gasBeforeGT: 0, gasTotal_nm3: 0, 
+      gas: 0, gasBeforeGT: 0, gasTotal_nm3: 0,
       gasBreakdown: { ammonia_nm3: 0, methanol_nm3: 0, boiler_nm3: 0, gt_nm3: 0, flare_nm3: 0 },
       profit: -Infinity, dailyAmm: 0, dailyMeth: 0, dailyUrea: 0,
       vcAmm: vc.amm_A, vcMeth: vc.meth, vcUrea: vc.urea_A,
@@ -667,7 +637,7 @@ const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
     const resB = solveCase('B', true);
     return resB || {
       caseType: 'Infeasible-B', D5: 0, K10: 0, K9: 0, K8: 0, K11: 0, K4: 0,
-      gas: 0, gasBeforeGT: 0, gasTotal_nm3: 0, 
+      gas: 0, gasBeforeGT: 0, gasTotal_nm3: 0,
       gasBreakdown: { ammonia_nm3: 0, methanol_nm3: 0, boiler_nm3: 0, gt_nm3: 0, flare_nm3: 0 },
       profit: -Infinity, dailyAmm: 0, dailyMeth: 0, dailyUrea: 0,
       vcAmm: vc.amm_B, vcMeth: vc.meth, vcUrea: vc.urea_B,
@@ -681,11 +651,8 @@ const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
   const resB = solveCase('B', true);
 
   // Also check "B-min" (Methanol Shutdown, D5 approx 0)
-  // The solver for Case B allows D5 down to 0. 
+  // The solver for Case B allows D5 down to 0.
   // So resB should ALREADY cover the optimal point between 0 and 60%.
-  // However, if there's a discontinuity or if we want to explicitly report "B" vs "B-min" logic?
-  // The original grid search had a specific "B-min" where D5=1.
-  // Our solver allows D5=0.
   // We can just take the best of A and B.
 
   let best = resA;
@@ -699,7 +666,7 @@ const gasCalc = calcGas(K10, D5, K9, K1, isShutdown, s, gtRunning);
   if (!best) {
     return {
       caseType: 'Infeasible', D5: 0, K10: 0, K9: 0, K8: 0, K11: 0, K4: 0,
-      gas: 0, gasBeforeGT: 0, gasTotal_nm3: 0, 
+      gas: 0, gasBeforeGT: 0, gasTotal_nm3: 0,
       gasBreakdown: { ammonia_nm3: 0, methanol_nm3: 0, boiler_nm3: 0, gt_nm3: 0, flare_nm3: 0 },
       profit: 0, dailyAmm: 0, dailyMeth: 0, dailyUrea: 0,
       vcAmm: vc.amm_A, vcMeth: vc.meth, vcUrea: vc.urea_A,
