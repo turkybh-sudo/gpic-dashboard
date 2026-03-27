@@ -10,7 +10,6 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard,
   TrendingUp,
-  Factory,
   Settings2,
   Info,
   Activity,
@@ -50,7 +49,6 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 // ─── Uncomment after placing the logo file at src/assets/gpic-logo.png ───
-// import gpicLogo from './assets/gpic-logo.png';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -182,16 +180,9 @@ export default function App() {
         {/* Logo / Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            {/* Logo image — replace Factory icon once gpic-logo.png is placed in src/assets/ */}
-            {/* <img src={gpicLogo} alt="GPIC" className="w-28 object-contain p-1 dark:brightness-90" /> */}
             <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-md" style={{ backgroundColor: `${GPIC_GREEN}18` }}>
-                  <Factory className="w-5 h-5" style={{ color: GPIC_GREEN }} />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: GPIC_GREEN }}>GPIC</span>
-              </div>
-              <h1 className="text-sm font-bold tracking-tight pl-8" style={{ color: GPIC_NAVY }}>
+              <img src={gpicLogo} alt="GPIC" className="w-28 object-contain p-1 dark:brightness-90" />
+              <h1 className="text-[10px] font-semibold uppercase tracking-widest text-center" style={{ color: GPIC_NAVY }}>
                 Complex Optimizer
               </h1>
             </div>
