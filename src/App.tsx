@@ -10,6 +10,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard,
   TrendingUp,
+  Factory,
   Settings2,
   Info,
   Activity,
@@ -32,10 +33,13 @@ import {
   Legend,
   BarChart,
   Bar,
+  Cell,
   ComposedChart,
   Line,
   LineChart,
   ReferenceLine,
+  PieChart,
+  Pie,
 } from 'recharts';
 import {
   useLPSolver,
@@ -321,19 +325,13 @@ export default function App() {
           {/* ════════════════ OPTIMIZER TAB ════════════════ */}
           {tab === 'optimizer' && (
             <>
-              {/* KPI Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
-                <KPICard
-                  title="Net Monthly Profit"
-                  value={fmtM(result.profit)}
-                  sub={`Case ${result.caseType} • ${MONTHS[monthIdx]}`}
-                  color={result.profit >= 0 ? 'emerald' : 'rose'}
-                  big
-                />
+              {/* KPI — Hero profit + 4 product cards */}
+              <ProfitHero result={result} monthName={MONTHS[monthIdx]} />
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4">
                 <KPICard title="Ammonia"  value={`${fmt(result.dailyAmm,  1)} MT/D`} sub={`${fmt(result.K11, 0)} MT saleable`} color="amber"  />
                 <KPICard title="Methanol" value={`${fmt(result.dailyMeth, 1)} MT/D`} sub={`${fmt(result.D5,  0)} MT total`}    color="purple" />
                 <KPICard title="Urea"     value={`${fmt(result.dailyUrea, 1)} MT/D`} sub={`${fmt(result.K9,  0)} MT saleable`} color="green"  />
-                <KPICard title="Gas Consumption" value={`${fmt(result.gas, 2)} MMSCFD`} sub={`${fmt(result.gasBeforeGT, 2)} base + GT`} color="rose" />
+                <KPICard title="Gas Consumption" value={`${fmt(result.gas, 2)} MMSCFD`} sub={gtRunning ? 'GT on — mixed power' : 'GT off — MEW power only'} color="rose" />
               </div>
 
               {/* Production vs Capacity + Profit Contribution */}
@@ -399,25 +397,60 @@ export default function App() {
 
               {/* Gas Consumption Breakdown */}
               <Card title="Gas Consumption Breakdown">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-                  <GasItem label="Ammonia"      value={result.gasBreakdown.ammonia_nm3}  total={result.gasTotal_nm3} color="bg-amber-500"  />
-                  <GasItem label="Methanol"     value={result.gasBreakdown.methanol_nm3} total={result.gasTotal_nm3} color="bg-purple-500" />
-                  <GasItem label="Boilers"      value={result.gasBreakdown.boiler_nm3}   total={result.gasTotal_nm3} color="bg-blue-500"   />
-                  <GasItem label="Gas Turbine"  value={result.gasBreakdown.gt_nm3}       total={result.gasTotal_nm3} color="bg-orange-500" />
-                  <GasItem label="Flare"        value={result.gasBreakdown.flare_nm3}    total={result.gasTotal_nm3} color="bg-slate-500"  />
+                <div className="flex flex-col lg:flex-row items-center gap-6">
+                  {/* Pie chart */}
+                  <div className="w-full lg:w-64 h-52 flex-shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'Ammonia',     value: result.gasBreakdown.ammonia_nm3,  fill: '#f59e0b' },
+                            { name: 'Methanol',    value: result.gasBreakdown.methanol_nm3, fill: '#a855f7' },
+                            { name: 'Boilers',     value: result.gasBreakdown.boiler_nm3,   fill: '#3b82f6' },
+                            { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3,       fill: '#f97316' },
+                            { name: 'Flare',       value: result.gasBreakdown.flare_nm3,    fill: '#64748b' },
+                          ].filter(d => d.value > 0)}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={90}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {[
+                            { name: 'Ammonia',     value: result.gasBreakdown.ammonia_nm3,  fill: '#f59e0b' },
+                            { name: 'Methanol',    value: result.gasBreakdown.methanol_nm3, fill: '#a855f7' },
+                            { name: 'Boilers',     value: result.gasBreakdown.boiler_nm3,   fill: '#3b82f6' },
+                            { name: 'Gas Turbine', value: result.gasBreakdown.gt_nm3,       fill: '#f97316' },
+                            { name: 'Flare',       value: result.gasBreakdown.flare_nm3,    fill: '#64748b' },
+                          ].filter(d => d.value > 0).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#f8fafc' }}
+                          formatter={(value: number) => [`${(value / 1e6).toFixed(2)}M Nm³`, '']}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  {/* Legend / breakdown strips */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-3 w-full lg:w-auto flex-1">
+                    <GasItem label="Ammonia"     value={result.gasBreakdown.ammonia_nm3}  total={result.gasTotal_nm3} color="bg-amber-500"  />
+                    <GasItem label="Methanol"    value={result.gasBreakdown.methanol_nm3} total={result.gasTotal_nm3} color="bg-purple-500" />
+                    <GasItem label="Boilers"     value={result.gasBreakdown.boiler_nm3}   total={result.gasTotal_nm3} color="bg-blue-500"   />
+                    <GasItem label="Gas Turbine" value={result.gasBreakdown.gt_nm3}       total={result.gasTotal_nm3} color="bg-orange-500" />
+                    <GasItem label="Flare"       value={result.gasBreakdown.flare_nm3}    total={result.gasTotal_nm3} color="bg-slate-500"  />
+                  </div>
                 </div>
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-6 text-[11px]">
                   <div>
-                    <span className="text-slate-500">Base (before GT topup)</span>
-                    <span className="ml-2 font-mono font-semibold text-slate-700 dark:text-slate-300">{fmt(result.gasBeforeGT, 2)} MMSCFD</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">After GT topup</span>
-                    <span className="ml-2 font-mono font-semibold text-slate-700 dark:text-slate-300">{fmt(result.gas, 2)} MMSCFD</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Limit</span>
+                    <span className="text-slate-500">Gas Limit</span>
                     <span className="ml-2 font-mono font-semibold text-slate-700 dark:text-slate-300">{fmt(maxGas, 2)} MMSCFD</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">Consumed</span>
+                    <span className="ml-2 font-mono font-semibold text-slate-700 dark:text-slate-300">{fmt(result.gas, 2)} MMSCFD</span>
                   </div>
                   <div>
                     <span className={cn("text-[10px] font-bold uppercase px-2 py-0.5 rounded-full", gtRunning ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500" : "bg-slate-200 dark:bg-slate-700 text-slate-500")}>
@@ -502,7 +535,7 @@ export default function App() {
           {tab === 'shutdown' && (
             <div className="space-y-6 md:space-y-8">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <KPICard title="Shutdown Profit"  value={fmtM(shutdownData.shutdownProfitVal)} sub="Case B — MeOH ≈ 0"           color="amber"  />
+                <KPICard title="Shutdown Profit"  value={fmtM(shutdownData.shutdownProfitVal)} sub="Methanol shutdown scenario"   color="amber"  />
                 <KPICard title="MeOH Crossover"   value={shutdownData.crossover != null ? `$${fmt(shutdownData.crossover, 1)}/MT` : 'N/A'} sub="Break-even methanol price" color="purple" />
                 <KPICard title="MeOH Variable Cost" value={`$${fmt(shutdownData.vcMeth, 1)}/MT`} sub="At current gas price"       color="rose"   />
               </div>
@@ -529,8 +562,8 @@ export default function App() {
                       )}
                       <ReferenceLine x={methP} stroke={GPIC_GREEN} strokeDasharray="4 4"
                         label={{ value: `Current $${methP}`, fill: GPIC_GREEN, fontSize: 10 }} />
-                      <Line type="monotone" dataKey="runningProfit"  stroke={GPIC_GREEN} strokeWidth={2} dot={false} name="Running (Case A)"   />
-                      <Line type="monotone" dataKey="shutdownProfit" stroke={GPIC_RED}   strokeWidth={2} dot={false} name="Shutdown (Case B)" strokeDasharray="5 5" />
+                      <Line type="monotone" dataKey="runningProfit"  stroke={GPIC_GREEN} strokeWidth={2} dot={false} name="Methanol Running"   />
+                      <Line type="monotone" dataKey="shutdownProfit" stroke={GPIC_RED}   strokeWidth={2} dot={false} name="Methanol Shutdown" strokeDasharray="5 5" />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -539,8 +572,8 @@ export default function App() {
               <div className="p-4 rounded-xl border" style={{ backgroundColor: `${GPIC_NAVY}08`, borderColor: `${GPIC_NAVY}30` }}>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   <span className="font-semibold" style={{ color: GPIC_NAVY }}>Shutdown Analysis: </span>
-                  Shows monthly profit under Case A (methanol at minimum load) vs Case B (methanol shutdown)
-                  as methanol market price varies. The crossover is where running becomes more profitable.
+                  Shows monthly profit when methanol is running at minimum load vs fully shutdown,
+                  as methanol market price varies. The crossover price is where running methanol becomes more profitable.
                   {shutdownData.crossover != null && ` At $${gasP}/MMBTU gas, break-even methanol = $${shutdownData.crossover.toFixed(1)}/MT.`}
                 </p>
               </div>
@@ -698,80 +731,157 @@ export default function App() {
 // COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function StatusBanner({ result }: { result: LPResult }) {
+function ProfitHero({ result, monthName }: { result: LPResult; monthName: string }) {
+  const isRunning = result.caseType.startsWith('A');
   const isLoss    = result.profit < 0;
-  const isOptimal = result.caseType.startsWith('A');
 
-  const config = isLoss
-    ? {
-        bg: 'bg-rose-500/10 border-rose-500/30',
-        dot: 'bg-rose-500',
-        text: 'text-rose-600 dark:text-rose-400',
-        label: 'OPERATING AT A LOSS',
-        sub: 'Revenue below variable cost — review prices or gas contract',
-      }
-    : isOptimal
-    ? {
-        bg: '',
-        dot: '',
-        text: '',
-        label: 'RUNNING OPTIMAL',
-        sub: 'Case A active — methanol at or above minimum load',
-        bgStyle: { backgroundColor: `${GPIC_GREEN}10`, borderColor: `${GPIC_GREEN}40` },
-        dotStyle: { backgroundColor: GPIC_GREEN },
-        textStyle: { color: GPIC_GREEN },
-      }
-    : {
-        bg: 'bg-amber-500/10 border-amber-500/30',
-        dot: 'bg-amber-500',
-        text: 'text-amber-600 dark:text-amber-400',
-        label: 'METHANOL LOW LOAD',
-        sub: 'Case B active — methanol below minimum running threshold',
-      };
+  const operatingLabel = isLoss
+    ? 'Operating at a loss'
+    : isRunning
+    ? 'Methanol at or above minimum load'
+    : 'Methanol shutdown';
 
-  const bgClass   = isOptimal ? '' : config.bg;
-  const bgStyle   = isOptimal ? (config as any).bgStyle : {};
-  const dotStyle  = isOptimal ? (config as any).dotStyle : {};
-  const textStyle = isOptimal ? (config as any).textStyle : {};
+  const operatingColor = isLoss
+    ? 'text-rose-500'
+    : isRunning
+    ? ''
+    : 'text-amber-500';
+
+  const profitColor = isLoss
+    ? 'text-rose-600 dark:text-rose-400'
+    : 'text-emerald-600 dark:text-emerald-400';
+
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        {/* Left: big profit number */}
+        <div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Net Monthly Profit — {monthName}</p>
+          <div className={cn('text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
+            {fmtM(result.profit)}
+          </div>
+          <p className="mt-2 text-[11px] font-semibold" style={isRunning && !isLoss ? { color: GPIC_GREEN } : {}}>
+            <span className={cn(operatingColor)}>
+              {operatingLabel}
+            </span>
+          </p>
+        </div>
+        {/* Right: three quick stats */}
+        <div className="flex gap-6 md:gap-10">
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ammonia</p>
+            <p className="text-xl font-bold font-mono text-amber-500">{result.dailyAmm.toFixed(0)} MT/D</p>
+            <p className="text-[10px] text-slate-400">{(result.K11).toFixed(0)} MT saleable</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Methanol</p>
+            <p className="text-xl font-bold font-mono text-purple-500">{result.dailyMeth.toFixed(0)} MT/D</p>
+            <p className="text-[10px] text-slate-400">{(result.D5).toFixed(0)} MT total</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Urea</p>
+            <p className="text-xl font-bold font-mono text-emerald-500">{result.dailyUrea.toFixed(0)} MT/D</p>
+            <p className="text-[10px] text-slate-400">{(result.K9).toFixed(0)} MT saleable</p>
+          </div>
+        </div>
+      </div>
+      {/* Bottom divider with gas + operating status bar */}
+      <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-6 text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Gas Consumed</span>
+          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{result.gas.toFixed(2)} MMSCFD</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Ammonia VC</span>
+          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">${result.vcAmm.toFixed(1)}/MT</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Methanol VC</span>
+          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">${result.vcMeth.toFixed(1)}/MT</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Urea VC</span>
+          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">${result.vcUrea.toFixed(1)}/MT</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBanner({ result }: { result: LPResult }) {
+  const isLoss     = result.profit < 0;
+  const isRunning  = result.caseType.startsWith('A');
+  const isShutdown = !isRunning && !isLoss;
+
+  // ── Determine label, color scheme, background ──
+  const label = isLoss
+    ? 'OPERATING AT A LOSS'
+    : isRunning
+    ? 'METHANOL AT OR ABOVE MINIMUM LOAD'
+    : 'METHANOL SHUTDOWN';
+
+  const sub = isLoss
+    ? 'Revenue is below variable cost — review market prices or gas contract'
+    : isRunning
+    ? 'Methanol plant running — optimal production mix active'
+    : 'Methanol plant shutdown — ammonia and urea only';
+
+  // Solid navy background when running (management-grade visibility),
+  // red tint for loss, amber tint for shutdown
+  const bannerBg = isLoss
+    ? 'bg-rose-600'
+    : isRunning
+    ? ''  // handled via style for exact GPIC navy
+    : 'bg-amber-500';
+
+  const bannerStyle = isRunning
+    ? { backgroundColor: GPIC_NAVY }
+    : isLoss
+    ? {}
+    : {};
+
+  const textColor  = (isRunning || isLoss) ? 'text-white' : 'text-white';
+  const subColor   = (isRunning || isLoss) ? 'text-white/70' : 'text-white/80';
+  const dotColor   = isLoss ? 'bg-red-200' : isRunning ? 'bg-emerald-400' : 'bg-amber-200';
+  const profitColor = isLoss ? 'text-red-200' : 'text-emerald-300';
 
   return (
     <div
-      className={cn('status-banner flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 py-2.5 border-b', bgClass)}
-      style={bgStyle}
+      className={cn('status-banner flex flex-wrap items-center justify-between gap-3 px-4 md:px-8 py-3', bannerBg)}
+      style={bannerStyle}
     >
-      {/* Left: status */}
-      <div className="flex items-center gap-2.5">
-        <span
-          className={cn('w-2 h-2 rounded-full animate-pulse flex-shrink-0', config.dot)}
-          style={dotStyle}
-        />
-        <span className={cn('text-[11px] font-bold uppercase tracking-widest', config.text)} style={textStyle}>
-          {config.label}
-        </span>
-        <span className="text-[10px] text-slate-500 dark:text-slate-400 hidden sm:inline">
-          — {config.sub}
-        </span>
+      {/* Left: status label */}
+      <div className="flex items-center gap-3">
+        <span className={cn('w-2.5 h-2.5 rounded-full animate-pulse flex-shrink-0', dotColor)} />
+        <div>
+          <span className={cn('text-[11px] font-extrabold uppercase tracking-widest', textColor)}>
+            {label}
+          </span>
+          <span className={cn('text-[10px] ml-3 hidden sm:inline', subColor)}>
+            {sub}
+          </span>
+        </div>
       </div>
 
-      {/* Right: key metrics */}
-      <div className="flex items-center gap-4 md:gap-6">
+      {/* Right: key figures */}
+      <div className="flex items-center gap-5 md:gap-8">
         <div className="text-center">
-          <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Net Profit</div>
-          <div className={cn('text-xs font-bold font-mono', result.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Monthly Profit</div>
+          <div className={cn('text-sm font-extrabold font-mono', profitColor)}>
             {result.profit >= 0 ? '+' : ''}{(result.profit / 1e6).toFixed(2)}M USD
           </div>
         </div>
         <div className="text-center hidden sm:block">
-          <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Gas Used</div>
-          <div className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">{result.gas.toFixed(2)} MMSCFD</div>
+          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Gas Consumed</div>
+          <div className="text-sm font-bold font-mono text-white">{result.gas.toFixed(2)} MMSCFD</div>
         </div>
         <div className="text-center hidden md:block">
-          <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Case</div>
-          <div className={cn('text-xs font-bold font-mono', config.text)} style={textStyle}>{result.caseType}</div>
+          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Ammonia</div>
+          <div className="text-sm font-bold font-mono text-white">{result.dailyAmm.toFixed(0)} MT/D</div>
         </div>
         <div className="text-center hidden md:block">
-          <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Ammonia</div>
-          <div className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">{result.dailyAmm.toFixed(0)} MT/D</div>
+          <div className="text-[9px] font-semibold text-white/60 uppercase tracking-wider">Methanol</div>
+          <div className="text-sm font-bold font-mono text-white">{result.dailyMeth.toFixed(0)} MT/D</div>
         </div>
       </div>
     </div>
