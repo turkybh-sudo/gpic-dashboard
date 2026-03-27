@@ -7,7 +7,7 @@ import { solve, type Model } from 'yalps';
 
 export const BASE_DEFAULTS = {
   K7: 0.57,                // NH3→Urea specific consumption (MT/MT) — Updated!K7
-  alpha: 0.1092174534,     // Legacy — now derived dynamically from methMin_MTD, kept for reference only
+  alpha: 0.1092174534,     // Fixed PSA synergy coefficient; independent of methMin_MTD
   C33_coeff: 1.660263,     // CO2 capacity coefficient
 
   // ─── Specific Gas Consumption (Nm3/MT of product) ───
@@ -493,16 +493,15 @@ export function solveLP(
     const coeffMethGas = s.SGC_meth + s.boiler_meth;
     const coeffUreaGas = s.K7 * sgc_amm + s.K7 * s.boiler_amm + s.boiler_urea;
 
-   // ─── Alpha — fixed PSA synergy slope (calibrated from plant data) ───
-    // alpha represents MT of extra ammonia capacity per MT of methanol.
-    // This is a physical relationship that does NOT change when methMin_MTD changes.
-    // methMin_MTD only sets the hard floor constraint below — it does not affect alpha.
+       // ─── Alpha — fixed PSA synergy slope ───
+    // alpha is a calibrated physical coefficient and does not change when
+    // methMin_MTD changes. methMin_MTD only defines the operating threshold:
+    //   Case A: methanol must stay at or above the minimum running load
+    //   Case B: methanol must stay at or below that threshold
     const alphaTerm = caseType === 'A' ? s.alpha : 0;
 
     // ─── Ammonia Capacity Constraint ───
-    // K10 + K7*urea - alpha*meth <= maxAmm*days - capLoss
-    // At methanol = methMin_MTD: ammonia loss = capLoss - alpha*methMin_MTD*days
-    // At methanol = maxMeth:     ammonia loss approaches zero (full recovery)
+    // amm_sale + K7*urea - alpha*meth <= maxAmm*days - capLoss
     const ammCapLimit = (maxAmm * days) - capLoss;
 
     // ─── Urea Capacity Constraint (Case B) ───
