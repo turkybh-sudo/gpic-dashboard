@@ -62,6 +62,7 @@ export default function App() {
   const [monthIdx, setMonthIdx] = useState(4); // May
   const [tab, setTab] = useState('optimizer');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [gtRunning, setGtRunning] = useState(true);
 
   const toggleTheme = useCallback(() => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
@@ -81,7 +82,7 @@ export default function App() {
   const days = MONTH_DAYS[monthIdx];
 
   // Core results
-  const result = useLPSolver(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings);
+const result = useLPSolver(ammP, methP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning);
 
   // Shutdown analysis
   const shutdownData = useMemo(() => {
@@ -104,7 +105,7 @@ export default function App() {
 
     for (let mp = 0; mp <= 350; mp += 5) {
       // Force Case A (Running) for the "Running" line
-      const r = solveLP(ammP, mp, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, 'A');
+     const r = solveLP(ammP, mp, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, 'A', gtRunning);
       const diff = r.profit - shutdownProfit;
       if (prevDiff !== null && prevDiff <= 0 && diff > 0 && crossover === null) {
         crossover = (mp - 5) + 5 * (-prevDiff) / (diff - prevDiff);
@@ -113,17 +114,17 @@ export default function App() {
       data.push({ methPrice: mp, runningProfit: r.profit / 1e6, shutdownProfit: shutdownProfit / 1e6 });
     }
     return { data, crossover, vcMeth: vc.meth, shutdownProfitVal: shutdownProfit };
-  }, [ammP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings]);
+  }, [ammP, ureaP, gasP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
   // Gas sensitivity
   const gasSens = useMemo(() => {
     const data = [];
     for (let g = 0.5; g <= 10; g += 0.5) {
-      const r = solveLP(ammP, methP, ureaP, g, maxAmm, maxMeth, maxUrea, maxGas, days, settings);
+      const r = solveLP(ammP, methP, ureaP, g, maxAmm, maxMeth, maxUrea, maxGas, days, settings, undefined, gtRunning);
       data.push({ gasPrice: g, profit: r.profit / 1e6 });
     }
     return data;
-  }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings]);
+  }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
   const profitColor = result.profit >= 0 ? 'text-emerald-500' : 'text-rose-500';
 
@@ -166,7 +167,31 @@ export default function App() {
               <ControlSlider label="Methanol Price" value={methP} onChange={setMethP} min={0} max={900} unit="$/MT" />
               <ControlSlider label="Urea Price" value={ureaP} onChange={setUreaP} min={200} max={900} unit="$/MT" />
               <ControlSlider label="Natural Gas" value={gasP} onChange={setGasP} min={0.5} max={10} step={0.25} unit="$/MMBTU" />
-              <ControlSlider label="Max Gas Limit" value={maxGas} onChange={setMaxGas} min={80} max={150} unit="MMSCFD" />
+<ControlSlider label="Max Gas Limit" value={maxGas} onChange={setMaxGas} min={80} max={150} unit="MMSCFD" />
+
+              {/* GT Toggle */}
+              <div className="flex items-center justify-between pt-1">
+                <div className="space-y-0.5">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Gas Turbine (GT)</label>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-600">
+                    {gtRunning ? 'GT supplying power + gas load active' : 'GT off — 100% MEW import power'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setGtRunning(prev => !prev)}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none",
+                    gtRunning ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg transform transition-transform duration-200",
+                      gtRunning ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
               
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
