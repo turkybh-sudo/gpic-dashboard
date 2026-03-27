@@ -54,7 +54,7 @@ export const TAB_ITEMS: Array<{
 }> = [
   {
     id: 'optimizer',
-    label: 'Optimizer',
+    label: 'Product Mix Tool',
     description: 'Production and profit optimizer.',
     icon: LayoutDashboard,
   },

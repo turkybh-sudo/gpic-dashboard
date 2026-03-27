@@ -17,13 +17,15 @@ export function ExecutiveHero({
   fmtM: (value: number | null) => string;
 }) {
   return (
-    <section className="gpic-hero-card overflow-hidden rounded-[34px] border border-[var(--border-soft)] bg-[var(--hero-gradient)] p-6 shadow-[var(--shadow-lg)] md:p-7">
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] xl:items-stretch">
-        <div className="min-w-0 xl:flex xl:flex-col xl:justify-between">
-          <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
-          <p className="mt-5 text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-[var(--text-muted)]">Net profit</p>
+    <section className="overflow-hidden rounded-[34px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-6 shadow-[var(--shadow-lg)] md:p-7">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,1.52fr)] xl:items-stretch">
+        <div className="min-w-0 text-center xl:flex xl:flex-col xl:justify-center">
+          <div className="flex justify-center">
+            <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
+          </div>
+          <p className="mt-5 text-[0.72rem] font-semibold uppercase tracking-[0.28em] text-[var(--text-muted)]">Net profit</p>
           <h3
-            className={`mt-3 font-[var(--font-numeric)] text-5xl font-semibold tracking-tight md:text-6xl ${TONE_STYLES[profitTone].strongText}`}
+            className={`mt-3 font-[var(--font-numeric)] text-[3.4rem] font-semibold tracking-tight md:text-[4.25rem] ${TONE_STYLES[profitTone].strongText}`}
           >
             {fmtM(profit)}
           </h3>
@@ -32,17 +34,17 @@ export function ExecutiveHero({
           {products.map((product) => (
             <div
               key={product.label}
-              className="rounded-[22px] border border-white/40 bg-white/55 p-4 shadow-sm dark:border-white/8 dark:bg-white/5"
+              className="flex min-h-[150px] flex-col items-center justify-center rounded-[22px] border border-white/40 bg-white/55 p-5 text-center shadow-sm dark:border-white/8 dark:bg-white/5"
             >
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+              <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
                 {product.label}
               </p>
               <p
-                className={`mt-3 font-[var(--font-numeric)] text-2xl font-semibold tracking-tight md:text-[1.9rem] ${TONE_STYLES[product.tone].strongText}`}
+                className={`mt-4 font-[var(--font-numeric)] text-[2.35rem] font-semibold tracking-tight md:text-[2.65rem] ${TONE_STYLES[product.tone].strongText}`}
               >
                 {product.daily}
               </p>
-              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{product.monthly}</p>
+              <p className="mt-3 text-base leading-6 text-[var(--text-secondary)]">{product.monthly}</p>
             </div>
           ))}
         </div>
