@@ -539,10 +539,10 @@ export function solveLP(
           ammCap: 1,
           ureaCapB: ureaCapB_AmmCoeff
         },
-        meth: {
-          profit: methP - vc.meth,
-          gas: coeffMethGas,
-          ammCap: -dynamicAlpha,
+       meth: { 
+          profit: methP - vc.meth, 
+          gas: coeffMethGas, 
+          ammCap: -alphaTerm,
           methCap: 1,
           methMin: 1
         },
