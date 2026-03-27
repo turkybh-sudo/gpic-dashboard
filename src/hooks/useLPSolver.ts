@@ -493,23 +493,17 @@ export function solveLP(
     const coeffMethGas = s.SGC_meth + s.boiler_meth;
     const coeffUreaGas = s.K7 * sgc_amm + s.K7 * s.boiler_amm + s.boiler_urea;
 
-    // ─── Dynamic Alpha (replaces static alpha) ───
-    // Slope defined by two anchors:
-    //   at methMin_MTD → full ammCapLoss_A loss (user-defined, e.g. 137 MT/D)
-    //   at maxMeth (100% load) → zero loss (full capacity recovered)
-    // slope = ammCapLoss_A / ((maxMeth - methMin_MTD) * days)
-    // If user raises methMin_MTD (e.g. 840 instead of 740), slope steepens automatically.
-    const dynamicAlpha = (caseType === 'A' && maxMeth > s.methMin_MTD)
-      ? s.ammCapLoss_A / ((maxMeth - s.methMin_MTD) * days)
-      : 0;
+   // ─── Alpha — fixed PSA synergy slope (calibrated from plant data) ───
+    // alpha represents MT of extra ammonia capacity per MT of methanol.
+    // This is a physical relationship that does NOT change when methMin_MTD changes.
+    // methMin_MTD only sets the hard floor constraint below — it does not affect alpha.
+    const alphaTerm = caseType === 'A' ? s.alpha : 0;
 
     // ─── Ammonia Capacity Constraint ───
-    // K10 + K7*urea - dynamicAlpha*meth <= limit
-    // Derived from: K10 <= maxAmm*days - ammCapLoss_A + dynamicAlpha*(D5 - methMin_MTD*days)
-    // Rearranged:   K10 - dynamicAlpha*meth <= maxAmm*days - ammCapLoss_A - dynamicAlpha*methMin_MTD*days
-    const ammCapLimit = caseType === 'A'
-      ? (maxAmm * days) - capLoss - dynamicAlpha * s.methMin_MTD * days
-      : (maxAmm * days) - capLoss;
+    // K10 + K7*urea - alpha*meth <= maxAmm*days - capLoss
+    // At methanol = methMin_MTD: ammonia loss = capLoss - alpha*methMin_MTD*days
+    // At methanol = maxMeth:     ammonia loss approaches zero (full recovery)
+    const ammCapLimit = (maxAmm * days) - capLoss;
 
     // ─── Urea Capacity Constraint (Case B) ───
     const ureaCapB_UreaCoeff = caseType === 'B' ? (1 - s.C33_coeff * s.K7) : 0;
