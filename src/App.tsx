@@ -13,7 +13,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  ComposedChart,
   Line,
   LineChart,
   Pie,
@@ -42,10 +41,8 @@ import {
   ControlSlider,
   ContributionBar,
   CostBreakdownCard,
-  InsightCard,
   LegendPill,
   MetricRailCard,
-  MetricSnapshot,
   MiniAsideStat,
   SettingsGroupCard,
   SettingsInput,
@@ -77,7 +74,6 @@ const fmt = (value: number | null, digits = 0) =>
       });
 
 const fmtM = (value: number | null) => (value == null ? '--' : `$${(value / 1e6).toFixed(2)}M`);
-const fmtSignedM = (value: number) => `${value >= 0 ? '+' : '-'}$${Math.abs(value / 1e6).toFixed(2)}M`;
 const fmtPercent = (value: number, digits = 1) => `${value.toFixed(digits)}%`;
 
 function useSystemTheme() {
@@ -293,9 +289,9 @@ export default function App() {
   const scenarioTone = getScenarioTone(result);
   const scenarioLabel = getScenarioLabel(result);
   const activeTab = TAB_ITEMS.find((item) => item.id === tab) ?? TAB_ITEMS[0];
-  const gasHeadroom = maxGas - result.gas;
   const breakEvenGas = findZeroCrossing(gasSensitivity.map((item) => ({ x: item.gasPrice, y: item.profit })));
   const currentMethanolGap = shutdownData.crossover == null ? null : methP - shutdownData.crossover;
+  const profitTone: Tone = result.profit >= 0 ? 'green' : 'rose';
 
   const productRows = [
     {
@@ -332,13 +328,17 @@ export default function App() {
       variableCost: result.vcUrea,
     },
   ];
+  const heroMetrics = [
+    { label: 'Ammonia', value: `${fmt(result.K11, 0)} MT/mo` },
+    { label: 'Methanol', value: `${fmt(result.D5, 0)} MT/mo` },
+    { label: 'Urea', value: `${fmt(result.K9, 0)} MT/mo` },
+  ];
 
   const capacityData = productRows.map((row) => ({
     ...row,
     utilization: row.capacity > 0 ? (row.daily / row.capacity) * 100 : 0,
   }));
 
-  const bottleneck = [...capacityData].sort((left, right) => right.utilization - left.utilization)[0];
   const contributionRows = [
     { label: 'Ammonia', tone: 'amber' as Tone, value: (ammP - result.vcAmm) * result.K11 },
     { label: 'Methanol', tone: 'purple' as Tone, value: (methP - result.vcMeth) * result.D5 },
@@ -363,40 +363,6 @@ export default function App() {
       pct: result.gasTotal_nm3 > 0 ? (item.value / result.gasTotal_nm3) * 100 : 0,
     }))
     .sort((left, right) => right.value - left.value);
-
-  const executiveSignals = [
-    {
-      label: 'Gas headroom',
-      value: `${gasHeadroom >= 0 ? '+' : ''}${fmt(gasHeadroom, 2)} MMSCFD`,
-      note: gasHeadroom >= 3 ? 'Comfortable room under the gas limit.' : 'Constraint is tightening.',
-      tone: gasHeadroom >= 3 ? ('green' as Tone) : ('rose' as Tone),
-    },
-    {
-      label: 'Tightest asset',
-      value: `${bottleneck.label} at ${fmtPercent(bottleneck.utilization, 1)}`,
-      note: 'Highest daily utilization under the current market deck.',
-      tone: bottleneck.utilization > 90 ? ('amber' as Tone) : ('blue' as Tone),
-    },
-    {
-      label: 'Methanol decision',
-      value:
-        currentMethanolGap == null
-          ? 'No crossover available'
-          : `${currentMethanolGap >= 0 ? '+' : ''}$${fmt(currentMethanolGap, 1)}/MT vs crossover`,
-      note:
-        currentMethanolGap == null
-          ? 'Running and shutdown do not cross in the scanned range.'
-          : currentMethanolGap >= 0
-            ? 'Current methanol pricing supports running economics.'
-            : 'Shutdown economics are stronger than running methanol.',
-      tone:
-        currentMethanolGap == null
-          ? ('slate' as Tone)
-          : currentMethanolGap >= 0
-            ? ('green' as Tone)
-            : ('amber' as Tone),
-    },
-  ];
 
   const costCards = [
     {
@@ -460,9 +426,6 @@ export default function App() {
     },
   ];
 
-  const currentGasPoint = gasSensitivity.find((item) => item.gasPrice === gasP) ?? gasSensitivity[0];
-  const terminalGasPoint = gasSensitivity[gasSensitivity.length - 1];
-
   const resetSettings = () => setSettings({ ...BASE_DEFAULTS });
   const updateSetting = (key: keyof Settings, value: number) =>
     setSettings((previous) => ({ ...previous, [key]: value }));
@@ -490,9 +453,6 @@ export default function App() {
               Management Optimizer
             </p>
             <h1 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">GPIC Dashboard</h1>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-              Live market controls with the production solver preserved under the hood.
-            </p>
           </div>
           <button
             type="button"
@@ -503,41 +463,34 @@ export default function App() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-6 rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
-                Active scenario
-              </p>
-              <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{MONTHS[monthIdx]}</p>
-            </div>
-            <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 md:grid-cols-1">
+          <div className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+              Month
+            </p>
+            <p className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{MONTHS[monthIdx]}</p>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <MiniAsideStat label="Monthly profit" value={fmtM(result.profit)} tone={scenarioTone} />
-            <MiniAsideStat
-              label="Gas load"
-              value={`${fmt(result.gas, 2)} MMSCFD`}
-              tone={gasHeadroom >= 3 ? 'green' : 'rose'}
-            />
+          <div className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+              Operating state
+            </p>
+            <div className="mt-3">
+              <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
+            </div>
           </div>
         </div>
         <div className="mt-6 flex-1 space-y-4 overflow-y-auto pr-1">
-          <SidebarSection eyebrow="Pricing deck" title="Market controls" tone="green" icon={<Settings2 className="h-4 w-4" />}>
-                    <ControlSlider label="Ammonia price" value={ammP} onChange={setAmmP} min={200} max={900} unit="$/MT" fmt={fmt} />
-                    <ControlSlider label="Methanol price" value={methP} onChange={setMethP} min={0} max={900} unit="$/MT" fmt={fmt} />
-                    <ControlSlider label="Urea price" value={ureaP} onChange={setUreaP} min={200} max={900} unit="$/MT" fmt={fmt} />
-                    <ControlSlider label="Natural gas" value={gasP} onChange={setGasP} min={0.5} max={10} step={0.25} decimals={2} unit="$/MMBTU" fmt={fmt} />
-                    <ControlSlider label="Gas limit" value={maxGas} onChange={setMaxGas} min={80} max={150} decimals={1} unit="MMSCFD" fmt={fmt} />
+          <SidebarSection eyebrow="Pricing" title="Market controls" tone="green" icon={<Settings2 className="h-4 w-4" />}>
+            <ControlSlider label="Ammonia price" value={ammP} onChange={setAmmP} min={200} max={900} unit="$/MT" fmt={fmt} />
+            <ControlSlider label="Methanol price" value={methP} onChange={setMethP} min={0} max={900} unit="$/MT" fmt={fmt} />
+            <ControlSlider label="Urea price" value={ureaP} onChange={setUreaP} min={200} max={900} unit="$/MT" fmt={fmt} />
+            <ControlSlider label="Natural gas" value={gasP} onChange={setGasP} min={0.5} max={10} step={0.25} decimals={2} unit="$/MMBTU" fmt={fmt} />
+            <ControlSlider label="Gas limit" value={maxGas} onChange={setMaxGas} min={80} max={150} decimals={1} unit="MMSCFD" fmt={fmt} />
             <div className="rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-3">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-[var(--text-primary)]">Gas turbine</p>
-                  <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-                    {gtRunning
-                      ? 'GT online. Imported power and gas split are active.'
-                      : 'GT offline. Model switches to imported power only.'}
-                  </p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">{gtRunning ? 'Online' : 'Offline'}</p>
                 </div>
                 <button
                   type="button"
@@ -553,10 +506,10 @@ export default function App() {
               </div>
             </div>
           </SidebarSection>
-          <SidebarSection eyebrow="Operating envelope" title="Capacity and month" tone="blue" icon={<Gauge className="h-4 w-4" />}>
-                    <ControlSlider label="Max ammonia" value={maxAmm} onChange={setMaxAmm} min={1000} max={1500} unit="MT/D" fmt={fmt} />
-                    <ControlSlider label="Max methanol" value={maxMeth} onChange={setMaxMeth} min={800} max={1500} unit="MT/D" fmt={fmt} />
-                    <ControlSlider label="Max urea" value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" fmt={fmt} />
+          <SidebarSection eyebrow="Capacity" title="Capacity and month" tone="blue" icon={<Gauge className="h-4 w-4" />}>
+            <ControlSlider label="Max ammonia" value={maxAmm} onChange={setMaxAmm} min={1000} max={1500} unit="MT/D" fmt={fmt} />
+            <ControlSlider label="Max methanol" value={maxMeth} onChange={setMaxMeth} min={800} max={1500} unit="MT/D" fmt={fmt} />
+            <ControlSlider label="Max urea" value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" fmt={fmt} />
             <div className="rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-3">
               <label className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Operating month</label>
               <select
@@ -571,27 +524,19 @@ export default function App() {
                   </option>
                 ))}
               </select>
-              <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{days} operating days are used for the selected month.</p>
+              <div className="mt-3 flex items-center justify-between text-xs text-[var(--text-muted)]">
+                <span>Operating days</span>
+                <span>{days}</span>
+              </div>
             </div>
           </SidebarSection>
         </div>
-        <div className="mt-4 rounded-[26px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-4">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
-            <div>
-              <p className="text-sm font-semibold text-[var(--text-primary)]">Model note</p>
-              <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
-                Model v32 with the original LP business logic preserved. This redesign only changes the presentation layer and chart framing.
-              </p>
-            </div>
-          </div>
-        </div>
       </aside>
       <main className="min-h-screen md:pl-[21rem]">
-        <div className="mx-auto max-w-[1680px] px-4 pb-12 pt-4 md:px-6 md:pt-6 xl:px-8">
-          <header className="no-print sticky top-3 z-20 mb-6 rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)]/92 shadow-[var(--shadow-lg)] backdrop-blur-xl">
+        <div className="app-shell mx-auto max-w-[1680px] px-4 pb-12 md:px-6 xl:px-8">
+          <header className="no-print mb-6 rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)]/92 shadow-[var(--shadow-lg)] backdrop-blur-xl">
             <div className="flex flex-col gap-4 p-4 md:p-5 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex items-start gap-3">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(true)}
@@ -601,27 +546,24 @@ export default function App() {
                   <Menu className="h-5 w-5" />
                 </button>
                 <div className="min-w-0">
-                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-[var(--text-muted)]">GPIC executive dashboard</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-3">
-                    <h2 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{activeTab.label}</h2>
-                    <StatusChip tone={scenarioTone}>{scenarioLabel}</StatusChip>
-                    <StatusChip tone="slate">{MONTHS[monthIdx]} planning window</StatusChip>
-                  </div>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">{activeTab.description}</p>
+                  <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-[var(--text-muted)]">GPIC Dashboard</p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{activeTab.label}</h2>
                 </div>
               </div>
               <div className="flex flex-col gap-3 xl:items-end">
                 <nav className="flex max-w-full gap-2 overflow-x-auto rounded-[22px] border border-[var(--border-soft)] bg-[var(--surface-subtle)] p-1.5 scrollbar-hide">
                   {TAB_ITEMS.map((item) => (
-                    <TabButton
-                      active={tab === item.id}
-                      label={item.label}
-                      onClick={() => {
-                        setTab(item.id);
-                        setSidebarOpen(false);
-                      }}
-                      icon={<item.icon className="h-3.5 w-3.5" />}
-                    />
+                    <React.Fragment key={item.id}>
+                      <TabButton
+                        active={tab === item.id}
+                        label={item.label}
+                        onClick={() => {
+                          setTab(item.id);
+                          setSidebarOpen(false);
+                        }}
+                        icon={<item.icon className="h-3.5 w-3.5" />}
+                      />
+                    </React.Fragment>
                   ))}
                 </nav>
                 <button
@@ -637,18 +579,16 @@ export default function App() {
           </header>
           {tab === 'optimizer' && (
             <div className="space-y-5 md:space-y-6">
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.32fr)_minmax(0,0.68fr)]">
                 <ExecutiveHero
-                  result={result}
-                  month={MONTHS[monthIdx]}
-                  days={days}
+                  profit={result.profit}
+                  profitTone={profitTone}
                   scenarioTone={scenarioTone}
                   scenarioLabel={scenarioLabel}
-                  signals={executiveSignals}
-                  fmt={fmt}
+                  metrics={heroMetrics}
                   fmtM={fmtM}
                 />
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
                   {productRows.map((row) => (
                     <React.Fragment key={row.key}>
                       <MetricRailCard
@@ -656,26 +596,15 @@ export default function App() {
                         tone={row.tone}
                         value={`${fmt(row.daily, 1)} MT/D`}
                         subtitle={`${fmt(row.monthly, 0)} ${row.monthlyLabel}`}
-                        helper={`${fmtPercent((row.daily / row.capacity) * 100, 1)} of ${fmt(row.capacity, 0)} MT/D`}
+                        helper={`${fmtPercent((row.daily / row.capacity) * 100, 1)} utilization`}
                       />
                     </React.Fragment>
                   ))}
-                  <MetricRailCard
-                    title="Gas load"
-                    tone={gasHeadroom >= 3 ? 'green' : 'rose'}
-                    value={`${fmt(result.gas, 2)} MMSCFD`}
-                    subtitle={`${fmtPercent((result.gas / maxGas) * 100, 1)} of the current gas limit`}
-                    helper={`${fmt(gasHeadroom, 2)} MMSCFD headroom remaining`}
-                  />
                 </div>
               </div>
 
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,0.82fr)]">
-                <SurfaceCard
-                  eyebrow="Daily production"
-                  title="Production profile"
-                  subtitle="Daily output against current capacity ceilings, ordered for quick constraint reading."
-                >
+                <SurfaceCard eyebrow="Daily production" title="Production profile">
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
                     <div className="min-w-0">
                       <div className="mb-4 flex flex-wrap gap-2">
@@ -729,11 +658,7 @@ export default function App() {
                   </div>
                 </SurfaceCard>
 
-                <SurfaceCard
-                  eyebrow="Net contribution"
-                  title="Contribution structure"
-                  subtitle="Positive product contribution, fixed-cost drag, and final net result with no visual noise."
-                >
+                <SurfaceCard eyebrow="Net contribution" title="Contribution structure">
                   <div className="space-y-4">
                     {contributionRows.map((row) => (
                       <React.Fragment key={row.label}>
@@ -762,7 +687,7 @@ export default function App() {
                       </div>
                       <div>
                         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Net monthly profit</p>
-                        <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[scenarioTone].strongText)}>
+                        <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[profitTone].strongText)}>
                           {fmtM(result.profit)}
                         </p>
                       </div>
@@ -771,11 +696,7 @@ export default function App() {
                 </SurfaceCard>
               </div>
 
-              <SurfaceCard
-                eyebrow="Feed and utilities"
-                title="Gas consumption architecture"
-                subtitle="The presentation separates the donut from the data list so legends, percentages, and labels never collide."
-              >
+              <SurfaceCard eyebrow="Feed and utilities" title="Gas consumption">
                 <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
                   <div className="relative mx-auto h-64 w-64">
                     <ResponsiveContainer width="100%" height="100%">
@@ -803,11 +724,6 @@ export default function App() {
                     </div>
                   </div>
                   <div className="min-w-0 space-y-4">
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <MetricSnapshot label="Gas limit" value={`${fmt(maxGas, 0)} MMSCFD`} note="Commercial cap" />
-                      <MetricSnapshot label="Headroom" value={`${fmt(gasHeadroom, 2)} MMSCFD`} note={gasHeadroom >= 3 ? 'Comfortable operating room' : 'Constraint is tightening'} tone={gasHeadroom >= 3 ? 'green' : 'rose'} />
-                      <MetricSnapshot label="GT status" value={gtRunning ? 'Online' : 'Offline'} note={gtRunning ? 'Split power load active' : 'All imported power'} tone={gtRunning ? 'blue' : 'slate'} />
-                    </div>
                     <div className="space-y-3">
                       {gasMix.map((item) => (
                         <div key={item.name} className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
@@ -831,11 +747,7 @@ export default function App() {
                 </div>
               </SurfaceCard>
 
-              <SurfaceCard
-                eyebrow="Commercial margin"
-                title="Contribution margin table"
-                subtitle="Price, variable cost, contribution margin, and monthly volume in one management-ready table."
-              >
+              <SurfaceCard eyebrow="Commercial margin" title="Contribution margin table">
                 <div className="overflow-x-auto">
                   <table className="min-w-[780px] w-full text-sm">
                     <thead>
@@ -869,7 +781,7 @@ export default function App() {
                 </div>
               </SurfaceCard>
 
-              <div className="grid gap-5 xl:grid-cols-3">
+              <div className="grid gap-5 xl:grid-cols-3 xl:auto-rows-fr">
                 {costCards.map((card) => (
                   <React.Fragment key={card.title}>
                     <CostBreakdownCard title={card.title} tone={card.tone} total={card.total} rows={card.rows} fmt={fmt} />
@@ -881,29 +793,34 @@ export default function App() {
 
           {tab === 'shutdown' && (
             <div className="space-y-5 md:space-y-6">
-              <div className="grid gap-4 xl:grid-cols-3">
-                <MetricRailCard title="Shutdown profit" tone="amber" value={fmtM(shutdownData.shutdownProfit)} subtitle="Methanol shutdown scenario" helper="Full shutdown economics under the current price deck" />
-                <MetricRailCard title="Crossover price" tone="purple" value={shutdownData.crossover == null ? 'No crossover' : `$${fmt(shutdownData.crossover, 1)}/MT`} subtitle="Methanol running vs shutdown" helper="Where running economics overtake shutdown economics" />
-                <MetricRailCard title="Running advantage" tone={shutdownData.currentGap >= 0 ? 'green' : 'rose'} value={fmtSignedM(shutdownData.currentGap)} subtitle="Running less shutdown at current methanol" helper="Positive means methanol should stay online" />
-              </div>
-
-              <SurfaceCard
-                eyebrow="Scenario comparison"
-                title="Running vs shutdown economics"
-                subtitle="Reference markers sit outside the chart copy so the graph stays readable at every width."
-              >
+              <SurfaceCard eyebrow="Methanol shutdown" title="MeOH Running vs Shutdown">
                 <div className="mb-4 flex flex-wrap gap-2">
-                  <LegendPill tone="green" label="Methanol running" />
-                  <LegendPill tone="rose" label="Methanol shutdown" />
-                  <LegendPill tone="slate" label={`Current price $${fmt(methP, 1)}/MT`} />
-                  {shutdownData.crossover != null && <LegendPill tone="amber" label={`Crossover $${fmt(shutdownData.crossover, 1)}/MT`} />}
+                  <LegendPill tone="green" label="MeOH running" />
+                  <LegendPill tone="rose" label="MeOH shutdown" />
                 </div>
-                <div className="h-[360px]">
+                <div className="h-[380px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={shutdownData.data} margin={{ top: 12, right: 20, left: 6, bottom: 10 }}>
+                    <LineChart data={shutdownData.data} margin={{ top: 12, right: 18, left: 6, bottom: 10 }}>
                       <CartesianGrid stroke={chartTheme.grid} strokeDasharray="4 4" />
-                      <XAxis type="number" dataKey="methPrice" domain={[0, 350]} tickCount={8} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={10} stroke={chartTheme.axis} />
-                      <YAxis tickFormatter={(value) => `$${value.toFixed(0)}M`} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={12} stroke={chartTheme.axis} />
+                      <XAxis
+                        type="number"
+                        dataKey="methPrice"
+                        domain={[0, 350]}
+                        tickCount={8}
+                        tick={{ fontSize: 11, fill: chartTheme.axis }}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={10}
+                        stroke={chartTheme.axis}
+                      />
+                      <YAxis
+                        tickFormatter={(value) => `$${value.toFixed(0)}M`}
+                        tick={{ fontSize: 11, fill: chartTheme.axis }}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={12}
+                        stroke={chartTheme.axis}
+                      />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: chartTheme.tooltipBg,
@@ -911,74 +828,66 @@ export default function App() {
                           borderRadius: 18,
                           color: chartTheme.tooltipText,
                         }}
-                        formatter={(value: number) => [`$${value.toFixed(2)}M`, 'Monthly profit']}
+                        labelFormatter={(value) => `Methanol price: $${fmt(Number(value), 1)}/MT`}
+                        formatter={(value: number, name: string) => [
+                          `$${value.toFixed(2)}M`,
+                          name === 'runningProfit' ? 'MeOH running' : 'MeOH shutdown',
+                        ]}
                       />
-                      <ReferenceLine x={methP} stroke="#64748b" strokeDasharray="6 4" />
-                      {shutdownData.crossover != null && <ReferenceLine x={shutdownData.crossover} stroke="#f59e0b" strokeDasharray="6 4" />}
+                      <ReferenceLine y={0} stroke={chartTheme.axis} strokeDasharray="4 4" />
                       <Line type="monotone" dataKey="runningProfit" stroke="#006341" strokeWidth={3} dot={false} />
                       <Line type="monotone" dataKey="shutdownProfit" stroke="#f43f5e" strokeWidth={3} dot={false} strokeDasharray="8 6" />
-                    </ComposedChart>
+                    </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
-                  {shutdownData.currentGap >= 0
-                    ? `At the current methanol price, running beats shutdown by ${fmtSignedM(shutdownData.currentGap)}.`
-                    : `At the current methanol price, shutdown beats running by ${fmtSignedM(-shutdownData.currentGap)}.`}{' '}
-                  {shutdownData.crossover != null &&
-                    `The crossover sits at $${fmt(shutdownData.crossover, 1)}/MT, which is ${
-                      currentMethanolGap != null && currentMethanolGap >= 0 ? 'below' : 'above'
-                    } the current methanol assumption.`}
-                </p>
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <MiniAsideStat label="Current MeOH price" value={`$${fmt(methP, 1)}/MT`} tone="slate" />
+                  <MiniAsideStat
+                    label="Methanol shutdown price"
+                    value={shutdownData.crossover == null ? 'Not in scan' : `$${fmt(shutdownData.crossover, 1)}/MT`}
+                    tone={shutdownData.crossover == null ? 'slate' : 'amber'}
+                  />
+                  <MiniAsideStat
+                    label="Current gap"
+                    value={currentMethanolGap == null ? 'Not available' : `${currentMethanolGap >= 0 ? '+' : ''}$${fmt(currentMethanolGap, 1)}/MT`}
+                    tone={currentMethanolGap == null ? 'slate' : currentMethanolGap >= 0 ? 'green' : 'rose'}
+                  />
+                </div>
               </SurfaceCard>
-
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <SurfaceCard eyebrow="Management interpretation" title="Decision guidance">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <InsightCard title="Current operating case" tone={scenarioTone} value={scenarioLabel} note="This is the solver-selected operating outcome under the current assumptions." />
-                    <InsightCard title="Methanol variable cost" tone="purple" value={`$${fmt(shutdownData.vcMeth, 1)}/MT`} note="Useful for reconciling market price pressure against running economics." />
-                    <InsightCard
-                      title="Price cushion"
-                      tone={currentMethanolGap == null ? 'slate' : currentMethanolGap >= 0 ? 'green' : 'rose'}
-                      value={currentMethanolGap == null ? 'Not available' : `${currentMethanolGap >= 0 ? '+' : ''}$${fmt(currentMethanolGap, 1)}/MT`}
-                      note="Current methanol price versus the running/shutdown crossover."
-                    />
-                  </div>
-                </SurfaceCard>
-                <SurfaceCard eyebrow="Current market" title="Reference values">
-                  <div className="space-y-3">
-                    <MetricSnapshot label="Methanol price" value={`$${fmt(methP, 1)}/MT`} note="Current assumption" />
-                    <MetricSnapshot label="Gas price" value={`$${fmt(gasP, 2)}/MMBTU`} note="Shared across both scenarios" tone="blue" />
-                    <MetricSnapshot label="Monthly fixed cost" value={fmtM(settings.FC_total)} note="Applied across scenarios" tone="rose" />
-                  </div>
-                </SurfaceCard>
-              </div>
             </div>
           )}
 
           {tab === 'sensitivity' && (
             <div className="space-y-5 md:space-y-6">
-              <div className="grid gap-4 xl:grid-cols-3">
-                <MetricRailCard title="Current gas price" tone="blue" value={`$${fmt(gasP, 2)}/MMBTU`} subtitle="Current assumption" helper="This point is marked on the chart" />
-                <MetricRailCard title="Approx. break-even gas" tone={breakEvenGas == null ? 'slate' : 'amber'} value={breakEvenGas == null ? 'No crossover' : `$${fmt(breakEvenGas, 2)}/MMBTU`} subtitle="Monthly profit crosses zero" helper="Interpolated from the current sensitivity run" />
-                <MetricRailCard title="Profit at $10 gas" tone={terminalGasPoint.profit >= 0 ? 'green' : 'rose'} value={`$${fmt(terminalGasPoint.profit, 2)}M`} subtitle={`${fmtSignedM((terminalGasPoint.profit - currentGasPoint.profit) * 1e6)} vs current`} helper="High-end gas stress test" />
-              </div>
-
-              <SurfaceCard
-                eyebrow="Commodity risk"
-                title="Monthly profit vs natural gas price"
-                subtitle="Axis titles and reference labels are moved into the card framing so the chart stays legible on narrower widths."
-              >
+              <SurfaceCard eyebrow="Natural gas" title="Gas Price Sensitivity">
                 <div className="mb-4 flex flex-wrap gap-2">
                   <LegendPill tone="green" label="Monthly profit" />
-                  <LegendPill tone="slate" label={`Current gas $${fmt(gasP, 2)}/MMBTU`} />
-                  {breakEvenGas != null && <LegendPill tone="amber" label={`Break-even $${fmt(breakEvenGas, 2)}/MMBTU`} />}
                 </div>
-                <div className="h-[360px]">
+                <div className="h-[380px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={gasSensitivity} margin={{ top: 12, right: 20, left: 6, bottom: 10 }}>
+                    <LineChart data={gasSensitivity} margin={{ top: 12, right: 18, left: 6, bottom: 10 }}>
                       <CartesianGrid stroke={chartTheme.grid} strokeDasharray="4 4" />
-                      <XAxis type="number" dataKey="gasPrice" domain={[0.5, 10]} tickCount={10} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={10} stroke={chartTheme.axis} />
-                      <YAxis tickFormatter={(value) => `$${value.toFixed(0)}M`} tick={{ fontSize: 11, fill: chartTheme.axis }} tickLine={false} axisLine={false} tickMargin={12} stroke={chartTheme.axis} />
+                      <XAxis
+                        type="number"
+                        dataKey="gasPrice"
+                        domain={[0.5, 10]}
+                        ticks={gasSensitivity.map((item) => item.gasPrice)}
+                        minTickGap={18}
+                        tickFormatter={(value) => Number(value).toFixed(1)}
+                        tick={{ fontSize: 11, fill: chartTheme.axis }}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={10}
+                        stroke={chartTheme.axis}
+                      />
+                      <YAxis
+                        tickFormatter={(value) => `$${value.toFixed(0)}M`}
+                        tick={{ fontSize: 11, fill: chartTheme.axis }}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={12}
+                        stroke={chartTheme.axis}
+                      />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: chartTheme.tooltipBg,
@@ -989,24 +898,21 @@ export default function App() {
                         formatter={(value: number) => [`$${value.toFixed(2)}M`, 'Monthly profit']}
                         labelFormatter={(value) => `Gas price: $${fmt(Number(value), 2)}/MMBTU`}
                       />
-                      <ReferenceLine x={gasP} stroke="#64748b" strokeDasharray="6 4" />
-                      {breakEvenGas != null && <ReferenceLine x={breakEvenGas} stroke="#f59e0b" strokeDasharray="6 4" />}
                       <ReferenceLine y={0} stroke={chartTheme.axis} strokeDasharray="4 4" />
                       <Line type="monotone" dataKey="profit" stroke="#006341" strokeWidth={3} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-[var(--text-secondary)]">
-                  At the current gas price of ${fmt(gasP, 2)}/MMBTU, the model shows {fmtM(result.profit)} in monthly profit.{' '}
-                  {breakEvenGas != null && `The interpolated break-even gas price is about $${fmt(breakEvenGas, 2)}/MMBTU.`}
-                </p>
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <MiniAsideStat label="Current gas" value={`$${fmt(gasP, 2)}/MMBTU`} tone="blue" />
+                  <MiniAsideStat label="Current profit" value={fmtM(result.profit)} tone={profitTone} />
+                  <MiniAsideStat
+                    label="Break-even gas"
+                    value={breakEvenGas == null ? 'Not in scan' : `$${fmt(breakEvenGas, 2)}/MMBTU`}
+                    tone={breakEvenGas == null ? 'slate' : 'amber'}
+                  />
+                </div>
               </SurfaceCard>
-
-              <div className="grid gap-5 xl:grid-cols-3">
-                <InsightCard title="Current profit point" tone={scenarioTone} value={fmtM(result.profit)} note="This matches the active scenario on the optimizer tab." />
-                <InsightCard title="Best case in scan" tone="green" value={`$${fmt(gasSensitivity[0].profit, 2)}M`} note="Profit at the lower end of the scanned gas range." />
-                <InsightCard title="Stress-case downside" tone="rose" value={fmtSignedM((terminalGasPoint.profit - currentGasPoint.profit) * 1e6)} note="Change in profit from the current gas point to the $10/MMBTU case." />
-              </div>
             </div>
           )}
 
@@ -1015,7 +921,7 @@ export default function App() {
               <SurfaceCard
                 eyebrow="Model constants"
                 title="Plant parameters and solver inputs"
-                subtitle="Advanced settings are grouped so reviewers can move through the model by engineering topic instead of scanning a wall of controls."
+                subtitle="Grouped by engineering topic."
                 actions={
                   <button
                     type="button"
@@ -1052,6 +958,17 @@ export default function App() {
                   ))}
                 </div>
               </SurfaceCard>
+              <div className="rounded-[28px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
+                <div className="flex items-start gap-3">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Model note</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">
+                      Model v32. Business logic, solver behavior, and calculations are preserved. This pass changes presentation, spacing, and chart framing only.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
