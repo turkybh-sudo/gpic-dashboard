@@ -7,7 +7,6 @@ import { solve, type Model } from 'yalps';
 
 export const BASE_DEFAULTS = {
   K7: 0.57,                // NH3→Urea specific consumption (MT/MT) — Updated!K7
-  alpha: 0.1092174534,     // Fixed PSA synergy coefficient; independent of methMin_MTD
   C33_coeff: 1.660263,     // CO2 capacity coefficient
 
   // ─── Specific Gas Consumption (Nm3/MT of product) ───
@@ -101,7 +100,7 @@ export const BASE_DEFAULTS = {
   // CDR shutdown penalties
   ammPenalty_B: 15,
   ammCapLoss_B: 5580,
-  ammCapLoss_A: 4247,      // MT/mo ammonia capacity loss at minimum methanol load
+  ammCapLoss_A: 4247,      // MT/mo ammonia capacity loss at minimum methanol load (31-day reference month)
   methMin_MTD: 740,        // Minimum methanol production when GT running (MT/D) — user settable
 
   // Fixed costs
@@ -448,6 +447,23 @@ function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings, gtR
   return mmscfd_base;
 }
 
+const AMM_CAP_REFERENCE_DAYS = 31;
+
+function getRunningAmmConstraintTerms(days: number, methMaxMTD: number, s: Settings) {
+  const fullMethMTD = Math.max(methMaxMTD, s.methMin_MTD + 1e-9);
+  const methRangeMTD = fullMethMTD - s.methMin_MTD;
+
+  // `ammCapLoss_A` is stored as the minimum-load monthly loss for a 31-day month.
+  // Convert it back to a daily derate, then scale it linearly between full load
+  // and minimum load for the selected month.
+  const ammoniaLossAtMinMTD = s.ammCapLoss_A / AMM_CAP_REFERENCE_DAYS;
+
+  return {
+    baseLossMonthly: (days * ammoniaLossAtMinMTD * fullMethMTD) / methRangeMTD,
+    methReliefPerTon: ammoniaLossAtMinMTD / methRangeMTD,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // LP SOLVER — Simplex (YALPS)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -481,9 +497,10 @@ export function solveLP(
   // Helper to construct and solve the model for a specific case
   const solveCase = (caseType: 'A' | 'B', isShutdown: boolean): LPResult | null => {
     const sgc_amm = isShutdown ? s.SGC_amm_B : s.SGC_amm_A;
-    const capLoss = isShutdown ? s.ammCapLoss_B : s.ammCapLoss_A;
     const vcAmm = isShutdown ? vc.amm_B : vc.amm_A;
     const vcUrea = isShutdown ? vc.urea_B : vc.urea_A;
+    const runningAmmTerms = !isShutdown ? getRunningAmmConstraintTerms(days, maxMeth, s) : null;
+    const capLoss = isShutdown ? s.ammCapLoss_B : runningAmmTerms!.baseLossMonthly;
 
     // ─── Gas Coefficients ───
     // Gas Constraint:
@@ -493,15 +510,13 @@ export function solveLP(
     const coeffMethGas = s.SGC_meth + s.boiler_meth;
     const coeffUreaGas = s.K7 * sgc_amm + s.K7 * s.boiler_amm + s.boiler_urea;
 
-       // ─── Alpha — fixed PSA synergy slope ───
-    // alpha is a calibrated physical coefficient and does not change when
-    // methMin_MTD changes. methMin_MTD only defines the operating threshold:
-    //   Case A: methanol must stay at or above the minimum running load
-    //   Case B: methanol must stay at or below that threshold
-    const alphaTerm = caseType === 'A' ? s.alpha : 0;
+    // ─── Linear ammonia derate while methanol is running ───
+    // The ammonia derate ramps linearly from zero at full methanol load to the
+    // prescribed minimum-load penalty at methMin_MTD.
+    const methReliefCoeff = caseType === 'A' ? runningAmmTerms!.methReliefPerTon : 0;
 
     // ─── Ammonia Capacity Constraint ───
-    // amm_sale + K7*urea - alpha*meth <= maxAmm*days - capLoss
+    // amm_sale + K7*urea - relief*meth <= maxAmm*days - baseLoss
     const ammCapLimit = (maxAmm * days) - capLoss;
 
     // ─── Urea Capacity Constraint (Case B) ───
@@ -538,10 +553,10 @@ export function solveLP(
           ammCap: 1,
           ureaCapB: ureaCapB_AmmCoeff
         },
-       meth: { 
+        meth: { 
           profit: methP - vc.meth, 
           gas: coeffMethGas, 
-          ammCap: -alphaTerm,
+          ammCap: -methReliefCoeff,
           methCap: 1,
           methMin: 1
         },
