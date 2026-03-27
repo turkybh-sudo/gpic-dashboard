@@ -4,11 +4,57 @@
   --gpic-green: #006341;
   --gpic-navy: #001A71;
   --gpic-red: #E70033;
+  --surface: #f5f7fb;
+  --surface-elevated: #ffffff;
+  --surface-muted: #eef2f7;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border-subtle: #dbe2ec;
+  --focus-ring: rgba(0, 99, 65, 0.35);
   --font-brand: 'Montserrat', 'Arial', sans-serif;
 }
 
 body {
   font-family: var(--font-brand);
+  background: var(--surface);
+  color: var(--text-primary);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #050914;
+    --surface-elevated: #0d1624;
+    --surface-muted: #131f31;
+    --text-primary: #e2e8f0;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --border-subtle: #233047;
+    --focus-ring: rgba(16, 185, 129, 0.35);
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.gpic-range {
+  accent-color: var(--gpic-green);
+}
+
+.gpic-card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgba(2, 6, 23, 0.06), 0 8px 24px rgba(2, 6, 23, 0.03);
 }
 
 @media print {
