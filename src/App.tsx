@@ -142,17 +142,17 @@ export default function App() {
   }, [ammP, methP, ureaP, maxAmm, maxMeth, maxUrea, maxGas, days, settings, gtRunning]);
 
   const chartTheme = isDark ? {
-    grid: '#1e293b', text: '#94a3b8',
-    tooltipBg: '#1e293b', tooltipBorder: '#334155', tooltipColor: '#f8fafc',
+    grid: '#263244', text: '#9fb0c7',
+    tooltipBg: '#0f172a', tooltipBorder: '#334155', tooltipColor: '#e2e8f0',
     barCap: '#475569',
   } : {
-    grid: '#e2e8f0', text: '#64748b',
-    tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipColor: '#0f172a',
-    barCap: '#cbd5e1',
+    grid: '#d8e1ea', text: '#5f6f84',
+    tooltipBg: '#f8fafc', tooltipBorder: '#d1dce8', tooltipColor: '#0f172a',
+    barCap: '#c7d2de',
   };
 
   return (
-    <div className="min-h-screen font-sans selection:bg-emerald-500/30 bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-200 transition-colors duration-300">
+    <div className="min-h-screen font-sans selection:bg-emerald-500/20 bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
 
       {/* Mobile backdrop */}
       {sidebarOpen && (
@@ -164,7 +164,7 @@ export default function App() {
 
       {/* ── Sidebar ── */}
       <aside className={cn(
-        "fixed left-0 top-0 h-full w-80 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-6 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
+        "fixed left-0 top-0 h-full w-72 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 p-5 overflow-y-auto z-30 shadow-2xl transition-all duration-300",
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
 
@@ -192,19 +192,23 @@ export default function App() {
           </button>
         </div>
 
-        <div className="space-y-8">
+        <div className="space-y-6">
           <section>
             <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
               <Settings2 className="w-4 h-4" />
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Controls</h2>
             </div>
 
-            <div className="space-y-6">
-              <ControlSlider label="Ammonia Price"  value={ammP}   onChange={setAmmP}   min={200} max={900} unit="$/MT" />
-              <ControlSlider label="Methanol Price" value={methP}  onChange={setMethP}  min={0}   max={900} unit="$/MT" />
-              <ControlSlider label="Urea Price"     value={ureaP}  onChange={setUreaP}  min={200} max={900} unit="$/MT" />
-              <ControlSlider label="Natural Gas"    value={gasP}   onChange={setGasP}   min={0.5} max={10}  step={0.25} unit="$/MMBTU" />
-              <ControlSlider label="Max Gas Limit"  value={maxGas} onChange={setMaxGas} min={80}  max={150} unit="MMSCFD" />
+            <details open className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 p-3">
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Market & Fuel</summary>
+              <div className="space-y-5 mt-4">
+                <ControlSlider label="Ammonia Price"  value={ammP}   onChange={setAmmP}   min={200} max={900} unit="$/MT" />
+                <ControlSlider label="Methanol Price" value={methP}  onChange={setMethP}  min={0}   max={900} unit="$/MT" />
+                <ControlSlider label="Urea Price"     value={ureaP}  onChange={setUreaP}  min={200} max={900} unit="$/MT" />
+                <ControlSlider label="Natural Gas"    value={gasP}   onChange={setGasP}   min={0.5} max={10}  step={0.25} unit="$/MMBTU" />
+                <ControlSlider label="Max Gas Limit"  value={maxGas} onChange={setMaxGas} min={80}  max={150} unit="MMSCFD" />
+              </div>
+            </details>
 
               {/* GT Toggle */}
               <div className="flex items-center justify-between pt-1">
@@ -231,7 +235,9 @@ export default function App() {
               </div>
 
               {/* Plant Capacities */}
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+              <details open className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 p-3">
+                <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Plant Capacities</summary>
+                <div className="pt-4">
                 <div className="flex items-center gap-2 mb-4 text-slate-500 dark:text-slate-400">
                   <Gauge className="w-4 h-4" />
                   <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Plant Capacities</h2>
@@ -241,10 +247,11 @@ export default function App() {
                   <ControlSlider label="Max Methanol" value={maxMeth} onChange={setMaxMeth} min={800}  max={1500} unit="MT/D" />
                   <ControlSlider label="Max Urea"     value={maxUrea} onChange={setMaxUrea} min={1500} max={2500} unit="MT/D" />
                 </div>
-              </div>
+                </div>
+              </details>
 
               {/* Month Selector */}
-              <div className="space-y-2 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <div className="space-y-2 pt-1">
                 <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Operating Month</label>
                 <select
                   value={monthIdx}
@@ -254,10 +261,9 @@ export default function App() {
                   {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
                 </select>
               </div>
-            </div>
           </section>
 
-          <div className="p-4 bg-slate-100 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
+          <div className="p-4 bg-slate-100/80 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
@@ -270,10 +276,10 @@ export default function App() {
       </aside>
 
       {/* ── Main Content ── */}
-      <main className="md:pl-80 min-h-screen transition-all duration-300">
+      <main className="md:pl-72 min-h-screen transition-all duration-300">
 
         {/* Header */}
-        <header className="no-print h-14 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-6 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
+        <header className="no-print h-16 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-7 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md sticky top-0 z-10 transition-colors duration-300">
           <div className="flex items-center gap-3 md:gap-4">
             {/* Hamburger — mobile only */}
             <button
@@ -283,7 +289,7 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             {/* Tab nav — scrollable on mobile */}
-            <nav className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-lg border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[60vw] md:max-w-none">
+            <nav className="flex gap-1 bg-slate-100 dark:bg-slate-900/50 p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto scrollbar-hide max-w-[60vw] md:max-w-none">
               <TabButton active={tab === 'optimizer'}   onClick={() => { setTab('optimizer');   setSidebarOpen(false); }} label="Optimizer"      icon={<Zap       className="w-3.5 h-3.5" />} />
               <TabButton active={tab === 'shutdown'}    onClick={() => { setTab('shutdown');    setSidebarOpen(false); }} label="MeOH Shutdown" icon={<Activity   className="w-3.5 h-3.5" />} />
               <TabButton active={tab === 'sensitivity'} onClick={() => { setTab('sensitivity'); setSidebarOpen(false); }} label="Gas Sensitivity" icon={<TrendingUp className="w-3.5 h-3.5" />} />
@@ -307,7 +313,7 @@ export default function App() {
         <StatusBanner result={result} />
 
         {/* ── Page Content ── */}
-        <div className="p-4 md:p-8 space-y-6 md:space-y-8">
+        <div className="p-4 md:p-7 xl:p-8 space-y-6 md:space-y-7">
 
           {/* ════════════════ OPTIMIZER TAB ════════════════ */}
           {tab === 'optimizer' && (
@@ -336,13 +342,13 @@ export default function App() {
                         margin={{ left: 20, right: 30 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} horizontal={false} />
-                        <XAxis type="number" stroke={chartTheme.text} fontSize={10} />
-                        <YAxis dataKey="name" type="category" stroke={chartTheme.text} fontSize={10} width={70} />
+                        <XAxis type="number" stroke={chartTheme.text} fontSize={11} tickLine={false} axisLine={false} />
+                        <YAxis dataKey="name" type="category" stroke={chartTheme.text} fontSize={11} width={80} tickLine={false} axisLine={false} />
                         <Tooltip
                           contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor }}
                           itemStyle={{ color: chartTheme.tooltipColor }}
                         />
-                        <Legend wrapperStyle={{ fontSize: '10px', color: chartTheme.text }} />
+                        <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.text }} iconType="circle" />
                         <Bar dataKey="prod" fill={GPIC_GREEN}      name="Production" radius={[0,2,2,0]} />
                         <Bar dataKey="cap"  fill={chartTheme.barCap} name="Capacity"   radius={[0,2,2,0]} />
                       </BarChart>
@@ -422,7 +428,7 @@ export default function App() {
                             <Tooltip
                               contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor, fontSize: '12px' }}
                               formatter={(value: number, name: string) => [
-                                `${(value / 1e6).toFixed(2)}M Nm³  (${result.gasTotal_nm3 > 0 ? ((value / result.gasTotal_nm3) * 100).toFixed(1) : 0}%)`,
+                                `${(value / 1e6).toFixed(1)}M Nm³  (${result.gasTotal_nm3 > 0 ? ((value / result.gasTotal_nm3) * 100).toFixed(1) : 0}%)`,
                                 name
                               ]}
                             />
@@ -573,14 +579,14 @@ export default function App() {
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={shutdownData.data} margin={{ left: 10, right: 20, bottom: 16 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                      <XAxis dataKey="methPrice" stroke={chartTheme.text} fontSize={10}
-                        label={{ value: 'Methanol Price ($/MT)', position: 'insideBottom', offset: -6, fontSize: 10, fill: chartTheme.text }} />
-                      <YAxis stroke={chartTheme.text} fontSize={10} tickFormatter={(v) => `$${v.toFixed(1)}M`} />
+                      <XAxis dataKey="methPrice" stroke={chartTheme.text} fontSize={11} tickLine={false} axisLine={false}
+                        label={{ value: 'Methanol Price ($/MT)', position: 'insideBottom', offset: -6, fontSize: 11, fill: chartTheme.text }} />
+                      <YAxis stroke={chartTheme.text} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(1)}M`} />
                       <Tooltip
                         contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor }}
                         formatter={(v: number) => [`$${v.toFixed(2)}M`]}
                       />
-                      <Legend wrapperStyle={{ fontSize: '10px', color: chartTheme.text }} />
+                      <Legend wrapperStyle={{ fontSize: '11px', color: chartTheme.text }} iconType="circle" />
                       {shutdownData.crossover != null && (
                         <ReferenceLine
                           x={Math.round(shutdownData.crossover / 5) * 5}
@@ -616,9 +622,9 @@ export default function App() {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={gasSens} margin={{ left: 10, right: 20, bottom: 16 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                      <XAxis dataKey="gasPrice" stroke={chartTheme.text} fontSize={10}
-                        label={{ value: 'Gas Price ($/MMBTU)', position: 'insideBottom', offset: -6, fontSize: 10, fill: chartTheme.text }} />
-                      <YAxis stroke={chartTheme.text} fontSize={10} tickFormatter={(v) => `$${v.toFixed(0)}M`} />
+                      <XAxis dataKey="gasPrice" stroke={chartTheme.text} fontSize={11} tickLine={false} axisLine={false}
+                        label={{ value: 'Gas Price ($/MMBTU)', position: 'insideBottom', offset: -6, fontSize: 11, fill: chartTheme.text }} />
+                      <YAxis stroke={chartTheme.text} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toFixed(0)}M`} />
                       <Tooltip
                         contentStyle={{ backgroundColor: chartTheme.tooltipBg, border: `1px solid ${chartTheme.tooltipBorder}`, borderRadius: '8px', color: chartTheme.tooltipColor }}
                         formatter={(v: number) => [`$${v.toFixed(2)}M`, 'Monthly Profit']}
@@ -795,12 +801,12 @@ function ProfitHero({ result, monthName }: { result: LPResult; monthName: string
     : 'text-emerald-600 dark:text-emerald-400';
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 md:p-7 shadow-sm transition-colors duration-300">
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: big profit number */}
         <div>
-          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">Net Monthly Profit — {monthName}</p>
-          <div className={cn('text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400 mb-1">Net Monthly Profit — {monthName}</p>
+          <div className={cn('text-4xl md:text-5xl font-extrabold font-mono tracking-tight', profitColor)}>
             {fmtM(result.profit)}
           </div>
           <p className="mt-2 text-[11px] font-semibold" style={isRunning && !isLoss ? { color: GPIC_GREEN } : {}}>
@@ -884,8 +890,10 @@ function StatusBanner({ result }: { result: LPResult }) {
 
   return (
     <div
-      className="status-banner bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3 transition-colors duration-300"
+      className="status-banner bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4 px-4 md:px-8 py-3.5 transition-colors duration-300"
       style={{ borderLeftWidth: 4, borderLeftStyle: 'solid', borderLeftColor: cfg.borderColor }}
+      role="status"
+      aria-live="polite"
     >
       {/* Left: status badge + description */}
       <div className="flex items-center gap-3">
@@ -942,6 +950,7 @@ function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
             value={value}
             onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
             step={step}
+            aria-label={`${label} numeric input`}
             className="w-16 bg-transparent text-xs font-mono font-bold text-slate-900 dark:text-white text-right focus:outline-none appearance-none"
           />
           <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal select-none">{unit}</span>
@@ -950,6 +959,7 @@ function ControlSlider({ label, value, onChange, min, max, step = 1, unit }: {
       <input
         type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
+        aria-label={`${label} slider`}
         className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500 transition-all"
       />
     </div>
@@ -962,10 +972,11 @@ function TabButton({ active, onClick, label, icon }: {
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        "flex items-center gap-2 px-4 py-1.5 rounded-md text-[11px] font-semibold transition-all uppercase tracking-wider whitespace-nowrap",
+        "flex items-center gap-2 px-4 py-2 rounded-lg text-[11px] font-semibold transition-all uppercase tracking-[0.08em] whitespace-nowrap",
         active
-          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 shadow-sm"
+          ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400 shadow-sm border border-emerald-500/20"
           : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
       )}
     >
@@ -986,20 +997,20 @@ function KPICard({ title, value, sub, color, big }: {
     rose:    'text-rose-600 dark:text-rose-500',
   };
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-lg transition-colors duration-300">
-      <h3 className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5 tracking-wide">{title}</h3>
-      <div className={cn("font-bold font-mono tracking-tight", big ? "text-3xl" : "text-2xl", colors[color])}>{value}</div>
-      {sub && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{sub}</p>}
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 md:p-5 shadow-sm transition-colors duration-300">
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-slate-400 mb-2">{title}</h3>
+      <div className={cn("font-bold font-mono leading-none tracking-tight", big ? "text-3xl" : "text-[1.7rem]", colors[color])}>{value}</div>
+      {sub && <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">{sub}</p>}
     </div>
   );
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
-      <div className="flex items-center gap-2 mb-5">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 md:p-6 shadow-sm transition-colors duration-300">
+      <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100 dark:border-slate-800">
         <div className="w-1 h-5 rounded-full" style={{ backgroundColor: GPIC_GREEN }} />
-        <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 tracking-normal">{title}</h3>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 tracking-normal">{title}</h3>
       </div>
       {children}
     </div>
@@ -1050,8 +1061,8 @@ function MarginRow({ name, vc, price, vol, color }: { name: string; vc: number; 
 
 function SettingsCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl transition-colors duration-300">
-      <div className="flex items-center gap-2 mb-5">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm transition-colors duration-300">
+      <div className="flex items-center gap-2 mb-5 pb-2 border-b border-slate-100 dark:border-slate-800">
         {icon}
         <h3 className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">{title}</h3>
       </div>
@@ -1088,6 +1099,7 @@ function SettingsInput({ label, value, onChange, step = 1, decimals = 2 }: {
         value={Number(value.toFixed(decimals))}
         onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) onChange(v); }}
         step={step}
+        aria-label={label}
         className="w-36 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-right text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 transition-colors"
       />
     </div>
