@@ -448,16 +448,18 @@ function applyGTAdditional(mmscfd_base: number, maxGas: number, s: Settings, gtR
 }
 
 const AMM_CAP_REFERENCE_DAYS = 31;
+const RUNNING_DERATE_FULL_LOAD_MTD = 1250;
 const RUNNING_DERATE_CALIBRATION_MTD = 740;
 
-function getRunningAmmConstraintTerms(days: number, methMaxMTD: number, s: Settings) {
+function getRunningAmmConstraintTerms(days: number, s: Settings) {
+  const fullMethMTD = RUNNING_DERATE_FULL_LOAD_MTD;
   const calibratedMethMinMTD = RUNNING_DERATE_CALIBRATION_MTD;
-  const fullMethMTD = Math.max(methMaxMTD, calibratedMethMinMTD + 1e-9);
   const methRangeMTD = fullMethMTD - calibratedMethMinMTD;
 
   // `ammCapLoss_A` is stored as the minimum-load monthly loss for a 31-day month.
-  // Keep the derate slope calibrated to the original 740 MT/D minimum-load case
-  // so changing `methMin_MTD` only changes the regime threshold, not the PSA slope.
+  // Keep the derate anchored to the physical 1250 -> 740 MT/D running line.
+  // User-facing methanol limits can change the operating bounds, but they must not
+  // redefine the PSA/ammonia derate curve itself.
   const ammoniaLossAtMinMTD = s.ammCapLoss_A / AMM_CAP_REFERENCE_DAYS;
 
   return {
@@ -501,7 +503,7 @@ export function solveLP(
     const sgc_amm = isShutdown ? s.SGC_amm_B : s.SGC_amm_A;
     const vcAmm = isShutdown ? vc.amm_B : vc.amm_A;
     const vcUrea = isShutdown ? vc.urea_B : vc.urea_A;
-    const runningAmmTerms = !isShutdown ? getRunningAmmConstraintTerms(days, maxMeth, s) : null;
+    const runningAmmTerms = !isShutdown ? getRunningAmmConstraintTerms(days, s) : null;
     const capLoss = isShutdown ? s.ammCapLoss_B : runningAmmTerms!.baseLossMonthly;
 
     // ─── Gas Coefficients ───
