@@ -446,11 +446,13 @@ export default function App() {
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <img src={gpicLogo} alt="GPIC" className="w-24 object-contain" />
-            <p className="mt-4 text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-[var(--text-muted)]">
-              Management Optimizer
-            </p>
-            <h1 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">GPIC Dashboard</h1>
+            <div className="rounded-[24px] bg-gradient-to-br from-[var(--gpic-green)]/8 to-[var(--gpic-navy)]/8 p-4 mb-2">
+              <img src={gpicLogo} alt="GPIC" className="w-24 object-contain" />
+              <p className="mt-4 text-[0.68rem] font-semibold uppercase tracking-[0.28em] text-[var(--text-muted)]">
+                Management Optimizer
+              </p>
+              <h1 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">GPIC Dashboard</h1>
+            </div>
           </div>
           <button
             type="button"
@@ -546,6 +548,7 @@ export default function App() {
                 <div className="min-w-0">
                   <p className="text-[0.68rem] font-semibold uppercase tracking-[0.26em] text-[var(--text-muted)]">GPIC Dashboard</p>
                   <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{activeTab.label}</h2>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">{activeTab.description}</p>
                 </div>
               </div>
               <div className="flex flex-col gap-3 xl:items-end">
@@ -577,6 +580,7 @@ export default function App() {
           </header>
           {tab === 'optimizer' && (
             <div className="space-y-5 md:space-y-6">
+              <div className="animate-in animate-in-d1">
               <ExecutiveHero
                 profit={result.profit}
                 profitTone={profitTone}
@@ -585,8 +589,9 @@ export default function App() {
                 products={heroProducts}
                 fmtM={fmtM}
               />
+              </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,0.82fr)]">
+              <div className="animate-in animate-in-d2 grid gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,0.82fr)]">
                 <SurfaceCard eyebrow="Daily production" title="Production profile">
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_240px]">
                     <div className="min-w-0">
@@ -679,7 +684,7 @@ export default function App() {
                 </SurfaceCard>
               </div>
 
-              <SurfaceCard eyebrow="Feed and utilities" title="Gas consumption">
+              <SurfaceCard eyebrow="Feed and utilities" title="Gas consumption" className="animate-in-d3">
                 <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
                   <div className="relative mx-auto h-64 w-64">
                     <ResponsiveContainer width="100%" height="100%">
@@ -730,7 +735,7 @@ export default function App() {
                 </div>
               </SurfaceCard>
 
-              <SurfaceCard eyebrow="Commercial margin" title="Contribution margin table">
+              <SurfaceCard eyebrow="Commercial margin" title="Contribution margin table" className="animate-in-d4">
                 <div className="overflow-x-auto">
                   <table className="min-w-[780px] w-full text-sm">
                     <thead>
@@ -759,6 +764,18 @@ export default function App() {
                           </tr>
                         );
                       })}
+                      <tr className="border-t-2 border-[var(--border-soft)] bg-[var(--surface-subtle)]/60">
+                        <td className="py-4 text-left text-sm font-bold text-[var(--text-primary)]">Total</td>
+                        <td className="py-4" />
+                        <td className="py-4" />
+                        <td className="py-4" />
+                        <td className="py-4 text-right font-[var(--font-numeric)] text-sm text-[var(--text-secondary)]">
+                          {fmt(productRows.reduce((s, r) => s + r.monthly, 0), 0)}
+                        </td>
+                        <td className={cn('py-4 text-right font-[var(--font-numeric)] text-sm font-bold', TONE_STYLES[profitTone].strongText)}>
+                          {fmtM(contributionRows.reduce((s, r) => s + r.value, 0))}
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
