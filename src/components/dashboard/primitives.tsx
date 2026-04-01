@@ -30,18 +30,19 @@ export function SurfaceCard({
   return (
     <section
       className={cn(
-        'rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-5 shadow-[var(--shadow-md)] md:p-6',
+        'animate-in rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-5 shadow-[var(--shadow-md)] md:p-6',
         className,
       )}
     >
       <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          {eyebrow && <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{eyebrow}</p>}
+          {eyebrow && <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">{eyebrow}</p>}
           <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h3>
           {subtitle && <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">{subtitle}</p>}
         </div>
         {actions && <div className="shrink-0">{actions}</div>}
       </div>
+      <div className="mb-5 h-px bg-[var(--border-soft)]" />
       <div className={bodyClassName}>{children}</div>
     </section>
   );
@@ -65,7 +66,7 @@ export function SidebarSection({
       <div className="flex items-start gap-3">
         <span className={cn('rounded-2xl border px-2.5 py-2', TONE_STYLES[tone].badge)}>{icon}</span>
         <div>
-          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{eyebrow}</p>
+          <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">{eyebrow}</p>
           <h3 className="mt-1 text-base font-semibold text-[var(--text-primary)]">{title}</h3>
         </div>
       </div>
@@ -139,21 +140,24 @@ export function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2 text-[0.76rem] font-semibold uppercase tracking-[0.18em] transition',
+        'inline-flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2 text-[0.76rem] font-bold uppercase tracking-[0.18em] transition',
         active
-          ? 'border border-emerald-500/20 bg-emerald-500/12 text-emerald-700 shadow-sm dark:text-emerald-300'
+          ? 'border border-emerald-500/25 bg-gradient-to-b from-emerald-500/15 to-emerald-500/8 text-emerald-700 shadow-sm dark:text-emerald-300'
           : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]',
       )}
     >
       {icon}
       {label}
+      {active && (
+        <span className="absolute bottom-1 left/2 h-0.5 w-4 -translate-x-1/2 rounded-full bg-emerald-500/60" />
+      )}
     </button>
   );
 }
 
 export function StatusChip({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   return (
-    <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em]', TONE_STYLES[tone].badge)}>
+    <span className={cn('inline-flex items-center rounded-full border px-3 py-1 text-[0.68rem] font-bold uppercase tracking-[0.18em]', TONE_STYLES[tone].badge)}>
       {children}
     </span>
   );
@@ -165,8 +169,8 @@ export function LegendPill({ tone, label }: { tone: Tone; label: string }) {
 
 export function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[22px] border border-white/40 bg-white/55 p-4 shadow-sm dark:border-white/8 dark:bg-white/5">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{label}</p>
+    <div className="rounded-[22px] border border-white/40 bg-white/60 p-4 shadow-sm backdrop-blur-sm dark:border-white/8 dark:bg-white/5">
+      <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">{label}</p>
       <p className="mt-2 font-[var(--font-numeric)] text-xl font-semibold text-[var(--text-primary)]">{value}</p>
     </div>
   );
@@ -185,7 +189,7 @@ export function InsightCard({
 }) {
   return (
     <div className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{title}</p>
+      <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">{title}</p>
       <p className={cn('mt-3 text-[1rem] font-semibold leading-6', TONE_STYLES[tone].strongText)}>{value}</p>
       <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{note}</p>
     </div>
@@ -206,8 +210,8 @@ export function MetricRailCard({
   tone: Tone;
 }) {
   return (
-    <div className="rounded-[26px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow-sm)]">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{title}</p>
+    <div className={cn('rounded-[26px] border border-[var(--border-soft)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow-sm)]', 'tone-accent-' + tone)}>
+      <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">{title}</p>
       <p className={cn('mt-3 font-[var(--font-numeric)] text-3xl font-semibold tracking-tight', TONE_STYLES[tone].strongText)}>{value}</p>
       {subtitle && <p className="mt-2 text-sm text-[var(--text-secondary)]">{subtitle}</p>}
       {helper && <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">{helper}</p>}
@@ -238,7 +242,7 @@ export function ContributionBar({
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
-        <div className={cn('h-full rounded-full', TONE_STYLES[tone].bar)} style={{ width: `${width}%` }} />
+        <div className={cn('h-full rounded-full bar-transition', TONE_STYLES[tone].bar)} style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -257,7 +261,7 @@ export function MetricSnapshot({
 }) {
   return (
     <div className="rounded-[24px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-4">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">{label}</p>
+      <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">{label}</p>
       <p className={cn('mt-2 font-[var(--font-numeric)] text-xl font-semibold', TONE_STYLES[tone].strongText)}>{value}</p>
       {note && <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">{note}</p>}
     </div>
@@ -289,7 +293,7 @@ function CostRow({
         </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
-        <div className={cn('h-full rounded-full', TONE_STYLES[tone].bar)} style={{ width: `${width}%` }} />
+        <div className={cn('h-full rounded-full bar-transition', TONE_STYLES[tone].bar)} style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -309,9 +313,9 @@ export function CostBreakdownCard({
   fmt: (value: number | null, digits?: number) => string;
 }) {
   return (
-    <section className="flex h-full flex-col overflow-hidden rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] shadow-[var(--shadow-md)]">
+    <section className="animate-in flex h-full flex-col overflow-hidden rounded-[30px] border border-[var(--border-soft)] bg-[var(--surface-strong)] shadow-[var(--shadow-md)]">
       <div className="flex flex-1 flex-col p-5 md:p-6">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Cost architecture</p>
+        <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">Cost architecture</p>
         <h3 className="mt-2 text-xl font-semibold tracking-tight text-[var(--text-primary)]">{title}</h3>
         <div className="mt-5 flex flex-1 flex-col gap-3">
           {rows.map((row) => (
@@ -322,7 +326,7 @@ export function CostBreakdownCard({
         </div>
       </div>
       <div className="border-t border-[var(--border-soft)] bg-[var(--surface-subtle)] px-5 py-4 md:px-6 md:py-5">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total variable cost</p>
+        <p className="text-[0.68rem] font-bold uppercase tracking-[0.24em] text-[var(--text-muted)]">Total variable cost</p>
         <p className={cn('mt-2 font-[var(--font-numeric)] text-2xl font-semibold', TONE_STYLES[tone].strongText)}>
           ${fmt(total, 2)}/MT
         </p>
@@ -390,8 +394,8 @@ export function SettingsInput({
 
 export function MiniAsideStat({ label, value, tone }: { label: string; value: string; tone: Tone }) {
   return (
-    <div className="rounded-[20px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-3">
-      <p className="text-[0.64rem] font-semibold uppercase tracking-[0.22em] text-[var(--text-muted)]">{label}</p>
+    <div className={cn('rounded-[20px] border border-[var(--border-soft)] bg-[var(--surface-panel)] p-3', 'tone-accent-' + tone)}>
+      <p className="text-[0.64rem] font-bold uppercase tracking-[0.22em] text-[var(--text-muted)]">{label}</p>
       <p className={cn('mt-2 font-[var(--font-numeric)] text-sm font-semibold', TONE_STYLES[tone].strongText)}>{value}</p>
     </div>
   );
